@@ -5,12 +5,18 @@ from pathlib import Path
 
 from forgeflow.config import AppConfig
 from forgeflow.engine import Engine
-from forgeflow.mailbox import LocalMailbox
+from forgeflow.mailbox import build_mailbox
 from forgeflow.store import Store
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ForgeFlow local-first prototype")
+    parser.add_argument(
+        "--provider",
+        choices=["local", "outlook"],
+        default="local",
+        help="Mailbox provider to use",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("init", help="Initialize local data directories and SQLite database")
@@ -31,7 +37,7 @@ def main() -> None:
     config.ensure_dirs()
     store = Store(config.db_path)
     store.initialize()
-    mailbox = LocalMailbox(config.inbox_dir, config.outbox_dir)
+    mailbox = build_mailbox(args.provider, config.inbox_dir, config.outbox_dir)
     engine = Engine(store, mailbox)
 
     try:

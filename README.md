@@ -1,12 +1,13 @@
 # ForgeFlow
 
-ForgeFlow is a local-first prototype for an email-native quote operations assistant. The current version ingests `.eml` files from a local inbox, turns threads into quote cases, generates recommended next actions, and writes approved outbound drafts to a local outbox.
+ForgeFlow is a local-first prototype for an email-native quote operations assistant. The current version supports a local `.eml` test inbox and an Outlook-backed production adapter through Microsoft Graph.
 
 ## Current scope
 
 - Shared-mailbox style quote inbox workflow
 - SQLite persistence for threads, cases, drafts, and event history
 - Local `.eml` ingestion for fast testing
+- Outlook shared-mailbox integration via Microsoft Graph
 - RFQ triage and missing-information detection
 - Draft generation for clarification, status replies, and lightweight follow-up
 
@@ -19,7 +20,7 @@ ForgeFlow is a local-first prototype for an email-native quote operations assist
 
 ## Quick start
 
-Use the source tree directly:
+Use the source tree directly with the local test inbox:
 
 ```bash
 PYTHONPATH=src python3 -m forgeflow.cli init
@@ -41,6 +42,39 @@ python3 -m pip install -e .
 forgeflow sync
 ```
 
+## Outlook mode
+
+ForgeFlow can also read from and send through an Outlook mailbox using Microsoft Graph.
+
+Required environment variables:
+
+```bash
+export FORGEFLOW_OUTLOOK_ACCESS_TOKEN="..."
+export FORGEFLOW_OUTLOOK_MAILBOX="quotes@company.com"
+```
+
+Optional environment variables:
+
+```bash
+export FORGEFLOW_OUTLOOK_FOLDER="Inbox"
+export FORGEFLOW_OUTLOOK_TOP="25"
+```
+
+Run the same commands with `--provider outlook`:
+
+```bash
+PYTHONPATH=src python3 -m forgeflow.cli --provider outlook sync
+PYTHONPATH=src python3 -m forgeflow.cli --provider outlook list-cases
+PYTHONPATH=src python3 -m forgeflow.cli --provider outlook list-drafts
+PYTHONPATH=src python3 -m forgeflow.cli --provider outlook send <thread_id>
+```
+
+In Outlook mode:
+
+- `sync` pulls recent messages from the configured mailbox folder using Microsoft Graph
+- thread IDs come from Outlook `conversationId`
+- `send` sends the draft through the configured Outlook mailbox and marks it as sent locally
+
 ## How the prototype works
 
 1. `.eml` files in `data/sample_inbox/` are parsed into normalized messages.
@@ -60,7 +94,7 @@ forgeflow sync
 
 The current local mailbox adapter is intentionally simple. To extend this toward production:
 
-- replace `LocalMailbox` with a Gmail API or Microsoft Graph adapter
+- replace the heuristic Graph token flow with tenant-specific OAuth or app credentials
 - replace heuristic extraction with an LLM-assisted extractor
 - add a review dashboard on top of the SQLite store
 - add scheduled follow-up jobs instead of manual sync
@@ -68,5 +102,5 @@ The current local mailbox adapter is intentionally simple. To extend this toward
 ## Notes
 
 - This prototype is local-only.
-- No live email provider integration is included yet.
-- Draft sending is simulated by writing text files into the outbox.
+- Outlook integration requires a valid Microsoft Graph access token.
+- Local mode simulates draft sending by writing text files into the outbox.

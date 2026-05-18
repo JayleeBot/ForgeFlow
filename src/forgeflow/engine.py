@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from forgeflow.extractor import extract_case
-from forgeflow.mailbox import LocalMailbox
+from forgeflow.mailbox import Mailbox
 from forgeflow.store import Store
 from forgeflow.workflow import build_case, build_draft
 
 
 class Engine:
-    def __init__(self, store: Store, mailbox: LocalMailbox) -> None:
+    def __init__(self, store: Store, mailbox: Mailbox) -> None:
         self.store = store
         self.mailbox = mailbox
 

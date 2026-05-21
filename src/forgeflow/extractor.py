@@ -6,24 +6,26 @@ from dataclasses import dataclass
 from forgeflow.models import EmailMessage
 
 
-PRICE_BREAK_RE = re.compile(
-    r"(\d+)\s*@\s*\$?([\d,]+\.?\d*)"
-    r"|(?:qty|quantity)\s*[:\-]?\s*(\d+)[^\n]{0,20}\$?([\d,]+\.?\d*)",
-    re.IGNORECASE,
-)
-UNIT_PRICE_RE = re.compile(
-    r"(?:unit\s*price|price\s*per\s*unit|per\s*piece|each)[^\n]{0,20}\$?([\d,]+\.?\d*)"
-    r"|\$\s*([\d,]+\.?\d*)\s*(?:per\s*unit|each|\/\s*pc)",
-    re.IGNORECASE,
-)
 PROD_LT_RE = re.compile(
-    r"(?:production\s*lead\s*time|plt|build\s*time)[^\n]{0,30}?(\d+\s*(?:weeks?|wks?|days?))",
+    r"(?:production\s+lead\s+time|lead\s+time|plt|build\s+time|delivery\s+time)"
+    r"\s*[:\-]?\s*\**\s*([\d]+\s*(?:business\s+)?(?:weeks?|wks?|days?))",
     re.IGNORECASE,
 )
-LONG_LT_LINE_RE = re.compile(
-    r"^([A-Z0-9][A-Z0-9\-]{2,})\s*[:\-]\s*(\d+)\s*(?:weeks?|wks?)",
-    re.IGNORECASE | re.MULTILINE,
+_QTY_LINE_RE = re.compile(r"(?:qty|quantity)\s*[:\-]\s*([\d,]+)", re.IGNORECASE)
+_UNIT_PRICE_LINE_RE = re.compile(
+    r"(?:unit\s*price|price\s*per\s*(?:unit|pcs?|piece)|each)\s*[:\-]\s*"
+    r"(?:USD|EUR|GBP|\$)?\s*([\d,]+\.?\d+)",
+    re.IGNORECASE,
 )
+_INLINE_PB_RE = re.compile(
+    r"([\d,]+)\s*(?:pcs?|units?|x\b)?\s*@\s*(?:USD|EUR|GBP|\$)\s*([\d,]+\.?\d*)",
+    re.IGNORECASE,
+)
+_LT_WEEKS_RE = re.compile(
+    r"lead\s+time\s*[:\-]?\s*\**\s*(\d+)\s*\**\s*(weeks?|wks?)",
+    re.IGNORECASE,
+)
+_PN_LINE_RE = re.compile(r"^\s*PN\s*[:\-]\s*(\S+)", re.IGNORECASE | re.MULTILINE)
 MOQ_RE = re.compile(
     r"(?:moq|minimum\s*order\s*(?:quantity)?)[^\n]{0,20}?(\d+)",
     re.IGNORECASE,
@@ -131,40 +133,65 @@ def _parse_sender(sender: str) -> tuple[str | None, str | None]:
 def _extract_price_breaks(text: str) -> list[str]:
     results: list[str] = []
     seen: set[str] = set()
-    for match in PRICE_BREAK_RE.finditer(text):
-        if match.group(1) and match.group(2):
-            entry = f"{match.group(1)}@${match.group(2)}"
-        elif match.group(3) and match.group(4):
-            entry = f"{match.group(3)}@${match.group(4)}"
-        else:
-            continue
-        key = entry.lower()
-        if key not in seen:
-            results.append(entry)
-            seen.add(key)
+
+    # Inline format: "500 pcs @ USD 7.80"
+    for m in _INLINE_PB_RE.finditer(text):
+        _add_pb(results, seen, m.group(1).replace(",", ""), m.group(2))
+
+    # Multi-line format: Qty on one line, Unit Price within the next few lines
+    lines = text.splitlines()
+    last_qty: str | None = None
+    last_qty_idx: int = -1
+    for i, line in enumerate(lines):
+        qty_m = _QTY_LINE_RE.search(line)
+        price_m = _UNIT_PRICE_LINE_RE.search(line)
+        if qty_m:
+            last_qty = qty_m.group(1).replace(",", "")
+            last_qty_idx = i
+        if price_m and last_qty is not None and (i - last_qty_idx) <= 6:
+            _add_pb(results, seen, last_qty, price_m.group(1))
+            last_qty = None
+
+    # Fallback: standalone unit price line without a nearby qty
     if not results:
-        m = UNIT_PRICE_RE.search(text)
+        m = _UNIT_PRICE_LINE_RE.search(text)
         if m:
-            price = m.group(1) or m.group(2)
-            results.append(f"unit@${price}")
+            results.append(f"unit@${m.group(1)}")
+
     return results
+
+
+def _add_pb(results: list[str], seen: set[str], qty: str, price: str) -> None:
+    if not price or price == "0":
+        return
+    entry = f"{qty}@${price}"
+    key = entry.lower()
+    if key not in seen:
+        results.append(entry)
+        seen.add(key)
 
 
 def _extract_long_lead_parts(text: str) -> list[str]:
     results: list[str] = []
     seen: set[str] = set()
-    for match in LONG_LT_LINE_RE.finditer(text):
-        part = match.group(1).strip()
-        weeks = match.group(2).strip()
-        try:
-            if int(weeks) >= 8:
-                entry = f"{part}: {weeks}wks"
-                key = entry.lower()
-                if key not in seen:
-                    results.append(entry)
-                    seen.add(key)
-        except ValueError:
-            continue
+    lines = text.splitlines()
+    last_pn: str | None = None
+    for line in lines:
+        pn_m = _PN_LINE_RE.search(line)
+        if pn_m:
+            last_pn = pn_m.group(1).strip()
+        lt_m = _LT_WEEKS_RE.search(line)
+        if lt_m and last_pn:
+            try:
+                weeks = int(lt_m.group(1))
+                if weeks >= 8:
+                    entry = f"{last_pn}: {weeks}wks"
+                    key = entry.lower()
+                    if key not in seen:
+                        results.append(entry)
+                        seen.add(key)
+            except ValueError:
+                continue
     return results
 
 

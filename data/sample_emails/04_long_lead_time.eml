@@ -1,0 +1,79 @@
+From: "Linda Zhao" <l.zhao@syntech-supply.com>
+To: purchasing@electester.com
+Subject: Quotation - ET-RFQ-0489 | Mixed BOM (Note: Extended Lead Times on Select Parts)
+Date: Mon, 18 May 2026 16:45:00 +0800
+Message-ID: <quote-003@syntech-supply.com>
+Content-Type: text/plain; charset="utf-8"
+
+Dear ElecTester Team,
+
+Please find our quotation for RFQ ET-RFQ-0489 below. We have sourced all items on your BOM, however please note that several components are currently on allocation and carry extended lead times. These are flagged below.
+
+Supplier: Syntech Supply Co.
+Quote #: STS-Q-20260518-0489
+Quote Date: 2026-05-18
+Valid Until: 2026-06-08
+
+LINE ITEMS:
+-----------
+1. Texas Instruments TPS65987DDFT USB-C PD Controller (QFN-60)
+   PN: IC-TPS65987DDFT
+   Qty: 300 pcs
+   Unit Price: USD 4.95
+   Total: USD 1,485.00
+   Lead Time: *** 32 WEEKS *** (currently on allocation; best available from distributor stock)
+   Note: This part is supply-constrained globally. We recommend placing a blanket order
+         or sourcing from approved alternates (TPS65987DDHBT - pin-compatible).
+
+2. Murata BM14B(0.8)-24DS-0.4V SFV Connector (24-pin 0.4mm pitch)
+   PN: CONN-BM14B-24DS
+   Qty: 1,000 pcs
+   Unit Price: USD 1.10
+   Total: USD 1,100.00
+   Lead Time: *** 20 WEEKS *** (Murata production lead time; no distributor buffer stock)
+
+3. Aluminum Enclosure, Custom Milled, 120x80x35mm (Anodized Black)
+   PN: MECH-ENC-ET-B01
+   Qty: 200 pcs
+   Unit Price: USD 22.00
+   Total: USD 4,400.00
+   Lead Time: 6 weeks (standard CNC + anodizing cycle)
+
+4. Capacitor, MLCC 10uF 16V 0805 X7R (Samsung CL21B106KQUNNE)
+   PN: CAP-10UF-16V-0805-X7R
+   Qty: 10,000 pcs
+   Unit Price: USD 0.035
+   Total: USD 350.00
+   Lead Time: 5 business days (in stock)
+
+5. Connector, JST-PH 2.0mm 4-pin Right Angle (SMD)
+   PN: CONN-JST-PH-4P-SMD
+   Qty: 2,000 pcs
+   Unit Price: USD 0.22
+   Total: USD 440.00
+   Lead Time: 8 business days (in stock)
+
+SUMMARY:
+--------
+Subtotal: USD 7,775.00
+Freight (FedEx IP, estimated): USD 65.00
+Grand Total: USD 7,840.00
+
+Payment Terms: Net 30 (subject to credit approval)
+Incoterms: DAP ElecTester facility
+
+IMPORTANT NOTICE:
+-----------------
+Items #1 and #2 have lead times that exceed 16 weeks. If your production schedule
+requires these parts sooner, we strongly recommend:
+  a) Placing a rush order on the open market (premium pricing may apply)
+  b) Evaluating approved alternates (we can assist with cross-reference)
+  c) A blanket PO with staggered delivery to secure factory allocation
+
+Please confirm how you would like to proceed.
+
+Best regards,
+Linda Zhao
+Senior Procurement Specialist | Syntech Supply Co.
+Tel: +86-21-5566-7788 ext. 312
+Email: l.zhao@syntech-supply.com

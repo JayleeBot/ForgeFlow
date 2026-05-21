@@ -1,0 +1,65 @@
+From: "David Chen" <d.chen@precisionpcb-tech.com>
+To: purchasing@electester.com
+Subject: Re: RFQ #ET-2026-0412 - PCB Assembly & Components Quote
+Date: Mon, 18 May 2026 09:15:00 +0800
+Message-ID: <quote-001@precisionpcb-tech.com>
+Content-Type: text/plain; charset="utf-8"
+
+Dear ElecTester Purchasing Team,
+
+Thank you for your RFQ #ET-2026-0412. Please find our complete quotation below.
+
+Supplier: Precision PCB Technology Co., Ltd.
+Quote #: PPCB-Q-20260518
+Valid Until: 2026-06-18
+
+LINE ITEMS:
+-----------
+1. PCB Assembly (Double-sided SMT + THT)
+   PN: ET-PCBA-MAIN-V2
+   Qty: 500 pcs
+   Unit Price: USD 18.50
+   Total: USD 9,250.00
+   Lead Time: 15 business days
+
+2. Capacitor, 100uF 25V Electrolytic (Nichicon UHE)
+   PN: CAP-100UF-25V-UHE
+   Qty: 5,000 pcs
+   Unit Price: USD 0.12
+   Total: USD 600.00
+   Lead Time: 7 business days
+
+3. STM32F103C8T6 Microcontroller (LQFP-48)
+   PN: IC-STM32F103C8T6
+   Qty: 500 pcs
+   Unit Price: USD 2.85
+   Total: USD 1,425.00
+   Lead Time: 10 business days
+
+4. Resistor Array 10K 8-pin SIP
+   PN: RES-10K-SIP8
+   Qty: 2,000 pcs
+   Unit Price: USD 0.05
+   Total: USD 100.00
+   Lead Time: 5 business days
+
+SUMMARY:
+--------
+Subtotal: USD 11,375.00
+Tooling / Setup Fee: USD 350.00 (one-time)
+Shipping (DHL Express to Shenzhen): USD 85.00
+Grand Total: USD 11,810.00
+
+Payment Terms: 30% deposit, 70% before shipment
+Incoterms: FOB Shenzhen
+
+Quality Certifications: ISO 9001:2015, IPC-A-610 Class 2
+PCB Test Method: ICT + Flying Probe available upon request
+
+Please let me know if you require any modifications or have questions.
+
+Best regards,
+David Chen
+Sales Manager | Precision PCB Technology Co., Ltd.
+Tel: +86-755-8812-3344
+Email: d.chen@precisionpcb-tech.com

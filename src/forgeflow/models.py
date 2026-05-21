@@ -21,11 +21,15 @@ class QuoteCase:
     thread_id: str
     status: str
     classification: str
-    customer_name: str | None
-    customer_email: str | None
-    due_date: str | None
-    part_numbers: str | None
-    quantities: str | None
+    supplier_name: str | None
+    supplier_email: str | None
+    price_breaks: str | None
+    production_lead_time: str | None
+    long_lead_time_parts: str | None
+    moq: str | None
+    payment_terms: str | None
+    nre: str | None
+    coo: str | None
     missing_fields: str | None
     next_action: str | None
     summary: str | None

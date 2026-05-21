@@ -10,7 +10,7 @@ from forgeflow.store import Store
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="ForgeFlow local-first prototype")
+    parser = argparse.ArgumentParser(description="ForgeFlow — buyer-side RFQ response assistant")
     parser.add_argument(
         "--provider",
         choices=["local", "outlook"],
@@ -20,11 +20,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("init", help="Initialize local data directories and SQLite database")
-    subparsers.add_parser("sync", help="Ingest local emails and update cases")
-    subparsers.add_parser("list-cases", help="List current cases")
+    subparsers.add_parser("sync", help="Ingest supplier emails and update quote cases")
+    subparsers.add_parser("list-cases", help="List current quote cases")
     subparsers.add_parser("list-drafts", help="List current drafts")
 
-    send_parser = subparsers.add_parser("send", help="Send a draft to the local outbox")
+    send_parser = subparsers.add_parser("send", help="Send a draft reply to a supplier")
     send_parser.add_argument("thread_id", help="Thread ID to send")
 
     return parser
@@ -48,14 +48,15 @@ def main() -> None:
             stats = engine.sync()
             print(
                 f"Ingested {stats['ingested']} messages, "
-                f"updated {stats['updated_cases']} cases, created {stats['drafted']} drafts"
+                f"updated {stats['updated_cases']} quote cases, "
+                f"created {stats['drafted']} drafts"
             )
             return
         if args.command == "list-cases":
             for case in store.list_cases():
                 print(
                     f"{case.thread_id} | {case.status} | {case.classification} | "
-                    f"{case.customer_email or '-'} | {case.next_action or '-'}"
+                    f"{case.supplier_email or '-'} | {case.next_action or '-'}"
                 )
                 print(f"  {case.summary}")
             return
@@ -69,7 +70,7 @@ def main() -> None:
             return
         if args.command == "send":
             out_path = engine.send(args.thread_id)
-            print(f"Draft written to {out_path}")
+            print(f"Draft sent: {out_path}")
             return
     finally:
         store.close()

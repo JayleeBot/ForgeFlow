@@ -32,11 +32,15 @@ class Store:
                 thread_id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,
                 classification TEXT NOT NULL,
-                customer_name TEXT,
-                customer_email TEXT,
-                due_date TEXT,
-                part_numbers TEXT,
-                quantities TEXT,
+                supplier_name TEXT,
+                supplier_email TEXT,
+                price_breaks TEXT,
+                production_lead_time TEXT,
+                long_lead_time_parts TEXT,
+                moq TEXT,
+                payment_terms TEXT,
+                nre TEXT,
+                coo TEXT,
                 missing_fields TEXT,
                 next_action TEXT,
                 summary TEXT,
@@ -128,18 +132,23 @@ class Store:
         self.conn.execute(
             """
             INSERT INTO cases (
-                thread_id, status, classification, customer_name, customer_email,
-                due_date, part_numbers, quantities, missing_fields, next_action,
-                summary, last_message_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                thread_id, status, classification, supplier_name, supplier_email,
+                price_breaks, production_lead_time, long_lead_time_parts,
+                moq, payment_terms, nre, coo,
+                missing_fields, next_action, summary, last_message_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(thread_id) DO UPDATE SET
                 status = excluded.status,
                 classification = excluded.classification,
-                customer_name = excluded.customer_name,
-                customer_email = excluded.customer_email,
-                due_date = excluded.due_date,
-                part_numbers = excluded.part_numbers,
-                quantities = excluded.quantities,
+                supplier_name = excluded.supplier_name,
+                supplier_email = excluded.supplier_email,
+                price_breaks = excluded.price_breaks,
+                production_lead_time = excluded.production_lead_time,
+                long_lead_time_parts = excluded.long_lead_time_parts,
+                moq = excluded.moq,
+                payment_terms = excluded.payment_terms,
+                nre = excluded.nre,
+                coo = excluded.coo,
                 missing_fields = excluded.missing_fields,
                 next_action = excluded.next_action,
                 summary = excluded.summary,
@@ -149,11 +158,15 @@ class Store:
                 case.thread_id,
                 case.status,
                 case.classification,
-                case.customer_name,
-                case.customer_email,
-                case.due_date,
-                case.part_numbers,
-                case.quantities,
+                case.supplier_name,
+                case.supplier_email,
+                case.price_breaks,
+                case.production_lead_time,
+                case.long_lead_time_parts,
+                case.moq,
+                case.payment_terms,
+                case.nre,
+                case.coo,
                 case.missing_fields,
                 case.next_action,
                 case.summary,
@@ -165,9 +178,10 @@ class Store:
     def get_case(self, thread_id: str) -> QuoteCase | None:
         row = self.conn.execute(
             """
-            SELECT thread_id, status, classification, customer_name, customer_email,
-                   due_date, part_numbers, quantities, missing_fields, next_action,
-                   summary, last_message_at
+            SELECT thread_id, status, classification, supplier_name, supplier_email,
+                   price_breaks, production_lead_time, long_lead_time_parts,
+                   moq, payment_terms, nre, coo,
+                   missing_fields, next_action, summary, last_message_at
             FROM cases
             WHERE thread_id = ?
             """,
@@ -175,48 +189,20 @@ class Store:
         ).fetchone()
         if row is None:
             return None
-        return QuoteCase(
-            thread_id=row["thread_id"],
-            status=row["status"],
-            classification=row["classification"],
-            customer_name=row["customer_name"],
-            customer_email=row["customer_email"],
-            due_date=row["due_date"],
-            part_numbers=row["part_numbers"],
-            quantities=row["quantities"],
-            missing_fields=row["missing_fields"],
-            next_action=row["next_action"],
-            summary=row["summary"],
-            last_message_at=datetime.fromisoformat(row["last_message_at"]),
-        )
+        return _row_to_case(row)
 
     def list_cases(self) -> list[QuoteCase]:
         rows = self.conn.execute(
             """
-            SELECT thread_id, status, classification, customer_name, customer_email,
-                   due_date, part_numbers, quantities, missing_fields, next_action,
-                   summary, last_message_at
+            SELECT thread_id, status, classification, supplier_name, supplier_email,
+                   price_breaks, production_lead_time, long_lead_time_parts,
+                   moq, payment_terms, nre, coo,
+                   missing_fields, next_action, summary, last_message_at
             FROM cases
             ORDER BY last_message_at DESC
             """
         ).fetchall()
-        return [
-            QuoteCase(
-                thread_id=row["thread_id"],
-                status=row["status"],
-                classification=row["classification"],
-                customer_name=row["customer_name"],
-                customer_email=row["customer_email"],
-                due_date=row["due_date"],
-                part_numbers=row["part_numbers"],
-                quantities=row["quantities"],
-                missing_fields=row["missing_fields"],
-                next_action=row["next_action"],
-                summary=row["summary"],
-                last_message_at=datetime.fromisoformat(row["last_message_at"]),
-            )
-            for row in rows
-        ]
+        return [_row_to_case(row) for row in rows]
 
     def replace_draft(self, draft: Draft) -> None:
         self.conn.execute("DELETE FROM drafts WHERE thread_id = ?", (draft.thread_id,))
@@ -297,3 +283,24 @@ class Store:
 
     def close(self) -> None:
         self.conn.close()
+
+
+def _row_to_case(row: sqlite3.Row) -> QuoteCase:
+    return QuoteCase(
+        thread_id=row["thread_id"],
+        status=row["status"],
+        classification=row["classification"],
+        supplier_name=row["supplier_name"],
+        supplier_email=row["supplier_email"],
+        price_breaks=row["price_breaks"],
+        production_lead_time=row["production_lead_time"],
+        long_lead_time_parts=row["long_lead_time_parts"],
+        moq=row["moq"],
+        payment_terms=row["payment_terms"],
+        nre=row["nre"],
+        coo=row["coo"],
+        missing_fields=row["missing_fields"],
+        next_action=row["next_action"],
+        summary=row["summary"],
+        last_message_at=datetime.fromisoformat(row["last_message_at"]),
+    )

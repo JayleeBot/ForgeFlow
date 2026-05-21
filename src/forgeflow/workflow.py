@@ -11,11 +11,15 @@ def build_case(thread_id: str, messages: list[EmailMessage], extracted: Extracte
         thread_id=thread_id,
         status=status,
         classification=extracted.classification,
-        customer_name=extracted.customer_name,
-        customer_email=extracted.customer_email,
-        due_date=extracted.due_date,
-        part_numbers=", ".join(extracted.part_numbers) or None,
-        quantities=", ".join(extracted.quantities) or None,
+        supplier_name=extracted.supplier_name,
+        supplier_email=extracted.supplier_email,
+        price_breaks=", ".join(extracted.price_breaks) or None,
+        production_lead_time=extracted.production_lead_time,
+        long_lead_time_parts=", ".join(extracted.long_lead_time_parts) or None,
+        moq=extracted.moq,
+        payment_terms=extracted.payment_terms,
+        nre=extracted.nre,
+        coo=extracted.coo,
         missing_fields=", ".join(extracted.missing_fields) or None,
         next_action=next_action,
         summary=extracted.summary,
@@ -26,60 +30,55 @@ def build_case(thread_id: str, messages: list[EmailMessage], extracted: Extracte
 def decide_next_action(extracted: ExtractedCase) -> tuple[str, str]:
     if extracted.classification == "ignore":
         return "none", "closed"
+    if extracted.classification == "supplier_followup":
+        return "draft_acknowledgement", "needs_review"
     if extracted.missing_fields:
-        return "draft_clarification", "needs_info"
-    if extracted.classification == "customer_followup":
-        return "draft_status_reply", "needs_review"
-    return "schedule_followup", "waiting_on_quote"
+        return "draft_missing_info_request", "quote_incomplete"
+    return "review_complete_quote", "quote_received"
 
 
 def build_draft(case: QuoteCase, messages: list[EmailMessage]) -> Draft | None:
-    if not case.customer_email or case.next_action == "none":
+    if not case.supplier_email or case.next_action == "none":
         return None
     latest_subject = messages[-1].subject
-    if case.next_action == "draft_clarification":
-        missing = case.missing_fields or "details"
+
+    if case.next_action == "draft_missing_info_request":
+        missing = case.missing_fields or "the outstanding details"
+        missing_lines = missing.replace(", ", "\n- ")
         body = (
-            f"Hi {case.customer_name or ''},\n\n"
-            "Thanks for the quote request. Before we can proceed, could you confirm the following:\n"
-            f"- {missing.replace(', ', chr(10) + '- ')}\n\n"
-            "Once we have that information, we can move this forward.\n\n"
-            "Best,\nForgeFlow Assistant"
+            f"Hi {case.supplier_name or ''},\n\n"
+            "Thank you for sending over your quote. We have reviewed it and need a few additional "
+            "details before we can move forward with our evaluation:\n\n"
+            f"- {missing_lines}\n\n"
+            "Could you please provide the above at your earliest convenience? "
+            "We want to make sure we are comparing quotes on a like-for-like basis.\n\n"
+            "Best regards,\n"
+            "Procurement Team"
         )
         return Draft(
             thread_id=case.thread_id,
-            draft_type="clarification",
-            recipient=case.customer_email,
+            draft_type="missing_info_request",
+            recipient=case.supplier_email,
             subject=f"Re: {latest_subject}",
             body=body,
             status="draft",
         )
-    if case.next_action == "draft_status_reply":
+
+    if case.next_action == "draft_acknowledgement":
         body = (
-            f"Hi {case.customer_name or ''},\n\n"
-            "Thanks for following up. We are reviewing your request and will share an update shortly.\n\n"
-            "Best,\nForgeFlow Assistant"
+            f"Hi {case.supplier_name or ''},\n\n"
+            "Thank you for following up. We are currently reviewing your quote and will be in touch "
+            "shortly with any questions or next steps.\n\n"
+            "Best regards,\n"
+            "Procurement Team"
         )
         return Draft(
             thread_id=case.thread_id,
-            draft_type="status_reply",
-            recipient=case.customer_email,
+            draft_type="acknowledgement",
+            recipient=case.supplier_email,
             subject=f"Re: {latest_subject}",
             body=body,
             status="draft",
         )
-    if case.next_action == "schedule_followup":
-        body = (
-            f"Hi {case.customer_name or ''},\n\n"
-            "Following up on your quote request. We are reviewing the details and will keep you posted if we need anything else.\n\n"
-            "Best,\nForgeFlow Assistant"
-        )
-        return Draft(
-            thread_id=case.thread_id,
-            draft_type="followup",
-            recipient=case.customer_email,
-            subject=f"Re: {latest_subject}",
-            body=body,
-            status="draft",
-        )
+
     return None

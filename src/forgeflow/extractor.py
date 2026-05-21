@@ -6,58 +6,116 @@ from dataclasses import dataclass
 from forgeflow.models import EmailMessage
 
 
-DUE_DATE_RE = re.compile(
-    r"\b(?:due|needed by|need by|deadline)\s*[:\-]?\s*([A-Z][a-z]{2,8}\s+\d{1,2}(?:,\s*\d{4})?)",
+PRICE_BREAK_RE = re.compile(
+    r"(\d+)\s*@\s*\$?([\d,]+\.?\d*)"
+    r"|(?:qty|quantity)\s*[:\-]?\s*(\d+)[^\n]{0,20}\$?([\d,]+\.?\d*)",
     re.IGNORECASE,
 )
-PART_RE = re.compile(r"\b(?:part|pn|p\/n|item)\s*[:#\-]?\s*([A-Z0-9\-]{3,})", re.IGNORECASE)
-QTY_RE = re.compile(r"\b(?:qty|quantity)\s*[:\-]?\s*(\d+)", re.IGNORECASE)
-RFQ_HINTS = ("rfq", "request for quote", "quote request", "please quote", "quotation")
-FOLLOWUP_HINTS = ("following up", "checking in", "any update", "status on quote")
+UNIT_PRICE_RE = re.compile(
+    r"(?:unit\s*price|price\s*per\s*unit|per\s*piece|each)[^\n]{0,20}\$?([\d,]+\.?\d*)"
+    r"|\$\s*([\d,]+\.?\d*)\s*(?:per\s*unit|each|\/\s*pc)",
+    re.IGNORECASE,
+)
+PROD_LT_RE = re.compile(
+    r"(?:production\s*lead\s*time|plt|build\s*time)[^\n]{0,30}?(\d+\s*(?:weeks?|wks?|days?))",
+    re.IGNORECASE,
+)
+LONG_LT_LINE_RE = re.compile(
+    r"^([A-Z0-9][A-Z0-9\-]{2,})\s*[:\-]\s*(\d+)\s*(?:weeks?|wks?)",
+    re.IGNORECASE | re.MULTILINE,
+)
+MOQ_RE = re.compile(
+    r"(?:moq|minimum\s*order\s*(?:quantity)?)[^\n]{0,20}?(\d+)",
+    re.IGNORECASE,
+)
+PAYMENT_RE = re.compile(
+    r"\b(net\s*\d+|net\s*\d+\s*days?|cod|prepay|50%\s*upfront|[0-9]+%\s*(?:upfront|deposit)[^,\n]{0,30})",
+    re.IGNORECASE,
+)
+NRE_RE = re.compile(
+    r"(?:nre|non[- ]recurring\s*engineering)[^\n]{0,30}?\$?([\d,]+\.?\d*)",
+    re.IGNORECASE,
+)
+COO_RE = re.compile(
+    r"(?:coo|country\s*of\s*origin|made\s*in|built?\s*in|manufactured\s*in)[^\n]{0,30}?(usa|united\s*states|mexico|china|taiwan|vietnam|malaysia|india|germany|japan)",
+    re.IGNORECASE,
+)
+QUOTE_RESPONSE_HINTS = (
+    "please find our quote",
+    "our quotation",
+    "quote for",
+    "pricing for",
+    "we are pleased to quote",
+    "attached is our quote",
+    "price quote",
+    "unit price",
+    "lead time",
+    "production lead time",
+    "nre",
+    "non-recurring",
+    "payment terms",
+)
+SUPPLIER_FOLLOWUP_HINTS = (
+    "following up",
+    "checking in",
+    "any update on",
+    "wanted to follow up",
+    "did you receive our quote",
+)
 
 
 @dataclass(slots=True)
 class ExtractedCase:
     classification: str
-    customer_name: str | None
-    customer_email: str | None
-    due_date: str | None
-    part_numbers: list[str]
-    quantities: list[str]
+    supplier_name: str | None
+    supplier_email: str | None
+    price_breaks: list[str]
+    production_lead_time: str | None
+    long_lead_time_parts: list[str]
+    moq: str | None
+    payment_terms: str | None
+    nre: str | None
+    coo: str | None
     missing_fields: list[str]
     summary: str
 
 
 def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
     latest = messages[-1]
-    combined_text = "\n".join(message.body_text for message in messages if message.body_text)
+    combined_text = "\n".join(m.body_text for m in messages if m.body_text)
     combined_lower = f"{latest.subject}\n{combined_text}".lower()
     classification = _classify(combined_lower)
-    customer_name, customer_email = _parse_sender(latest.sender)
-    due_date = _find_first(DUE_DATE_RE, combined_text)
-    part_numbers = _find_all(PART_RE, combined_text)
-    quantities = _find_all(QTY_RE, combined_text)
-    missing_fields = _derive_missing_fields(classification, due_date, part_numbers, quantities)
-    summary = _build_summary(classification, customer_name, due_date, part_numbers, quantities, missing_fields)
+    supplier_name, supplier_email = _parse_sender(latest.sender)
+    price_breaks = _extract_price_breaks(combined_text)
+    production_lead_time = _find_first(PROD_LT_RE, combined_text)
+    long_lead_time_parts = _extract_long_lead_parts(combined_text)
+    moq = _find_first(MOQ_RE, combined_text)
+    payment_terms = _find_first(PAYMENT_RE, combined_text)
+    nre = _find_nre(combined_text)
+    coo = _find_first(COO_RE, combined_text)
+    missing_fields = _derive_missing_fields(classification, price_breaks, production_lead_time, payment_terms)
+    summary = _build_summary(classification, supplier_name, price_breaks, production_lead_time, long_lead_time_parts, moq, payment_terms, nre, coo, missing_fields)
     return ExtractedCase(
         classification=classification,
-        customer_name=customer_name,
-        customer_email=customer_email,
-        due_date=due_date,
-        part_numbers=part_numbers,
-        quantities=quantities,
+        supplier_name=supplier_name,
+        supplier_email=supplier_email,
+        price_breaks=price_breaks,
+        production_lead_time=production_lead_time,
+        long_lead_time_parts=long_lead_time_parts,
+        moq=moq,
+        payment_terms=payment_terms,
+        nre=nre,
+        coo=coo,
         missing_fields=missing_fields,
         summary=summary,
     )
 
 
 def _classify(text: str) -> str:
-    if any(hint in text for hint in FOLLOWUP_HINTS):
-        return "customer_followup"
-    if any(hint in text for hint in RFQ_HINTS):
-        return "new_rfq"
-    if "?" in text or "clarify" in text or "clarification" in text:
-        return "clarification_needed"
+    if any(hint in text for hint in SUPPLIER_FOLLOWUP_HINTS):
+        return "supplier_followup"
+    if any(hint in text for hint in QUOTE_RESPONSE_HINTS):
+        return "quote_received"
     return "ignore"
 
 
@@ -70,56 +128,99 @@ def _parse_sender(sender: str) -> tuple[str | None, str | None]:
     return None, sender.strip() if "@" in sender else None
 
 
+def _extract_price_breaks(text: str) -> list[str]:
+    results: list[str] = []
+    seen: set[str] = set()
+    for match in PRICE_BREAK_RE.finditer(text):
+        if match.group(1) and match.group(2):
+            entry = f"{match.group(1)}@${match.group(2)}"
+        elif match.group(3) and match.group(4):
+            entry = f"{match.group(3)}@${match.group(4)}"
+        else:
+            continue
+        key = entry.lower()
+        if key not in seen:
+            results.append(entry)
+            seen.add(key)
+    if not results:
+        m = UNIT_PRICE_RE.search(text)
+        if m:
+            price = m.group(1) or m.group(2)
+            results.append(f"unit@${price}")
+    return results
+
+
+def _extract_long_lead_parts(text: str) -> list[str]:
+    results: list[str] = []
+    seen: set[str] = set()
+    for match in LONG_LT_LINE_RE.finditer(text):
+        part = match.group(1).strip()
+        weeks = match.group(2).strip()
+        try:
+            if int(weeks) >= 8:
+                entry = f"{part}: {weeks}wks"
+                key = entry.lower()
+                if key not in seen:
+                    results.append(entry)
+                    seen.add(key)
+        except ValueError:
+            continue
+    return results
+
+
+def _find_nre(text: str) -> str | None:
+    match = NRE_RE.search(text)
+    if match:
+        return f"${match.group(1)}"
+    return None
+
+
 def _find_first(pattern: re.Pattern[str], text: str) -> str | None:
     match = pattern.search(text)
     return match.group(1).strip() if match else None
 
 
-def _find_all(pattern: re.Pattern[str], text: str) -> list[str]:
-    values = [match.strip() for match in pattern.findall(text)]
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for value in values:
-        normalized = value.lower()
-        if normalized in seen:
-            continue
-        deduped.append(value)
-        seen.add(normalized)
-    return deduped
-
-
 def _derive_missing_fields(
     classification: str,
-    due_date: str | None,
-    part_numbers: list[str],
-    quantities: list[str],
+    price_breaks: list[str],
+    production_lead_time: str | None,
+    payment_terms: str | None,
 ) -> list[str]:
     if classification == "ignore":
         return []
     missing: list[str] = []
-    if not due_date:
-        missing.append("due_date")
-    if not part_numbers:
-        missing.append("part_numbers")
-    if not quantities:
-        missing.append("quantities")
+    if not price_breaks:
+        missing.append("unit_price")
+    if not production_lead_time:
+        missing.append("production_lead_time")
+    if not payment_terms:
+        missing.append("payment_terms")
     return missing
 
 
 def _build_summary(
     classification: str,
-    customer_name: str | None,
-    due_date: str | None,
-    part_numbers: list[str],
-    quantities: list[str],
+    supplier_name: str | None,
+    price_breaks: list[str],
+    production_lead_time: str | None,
+    long_lead_time_parts: list[str],
+    moq: str | None,
+    payment_terms: str | None,
+    nre: str | None,
+    coo: str | None,
     missing_fields: list[str],
 ) -> str:
-    customer = customer_name or "Unknown customer"
-    due = due_date or "no due date provided"
-    parts = ", ".join(part_numbers) if part_numbers else "no part numbers found"
-    qtys = ", ".join(quantities) if quantities else "no quantities found"
+    supplier = supplier_name or "Unknown supplier"
+    prices = ", ".join(price_breaks) if price_breaks else "no pricing found"
+    plt = production_lead_time or "no PLT found"
+    llt = ", ".join(long_lead_time_parts) if long_lead_time_parts else "none"
+    terms = payment_terms or "not stated"
+    nre_str = nre or "none"
+    coo_str = coo or "not stated"
     missing = ", ".join(missing_fields) if missing_fields else "none"
     return (
-        f"{classification} from {customer}; due {due}; "
-        f"parts: {parts}; quantities: {qtys}; missing: {missing}"
+        f"{classification} from {supplier}; "
+        f"prices: {prices}; PLT: {plt}; long-LT parts: {llt}; "
+        f"MOQ: {moq or 'not stated'}; terms: {terms}; "
+        f"NRE: {nre_str}; COO: {coo_str}; missing: {missing}"
     )

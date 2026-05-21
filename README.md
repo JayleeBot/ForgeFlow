@@ -1,26 +1,49 @@
 # ForgeFlow
 
-ForgeFlow is a local-first prototype for an email-native quote operations assistant. The current version supports a local `.eml` test inbox and an Outlook-backed production adapter through Microsoft Graph.
+ForgeFlow is a local-first email assistant for **procurement and sourcing teams**. It monitors a buyer's quote inbox, automatically triages incoming supplier responses, extracts structured pricing and lead time data, and drafts follow-up emails when key information is missing.
 
-## Current scope
+## The problem it solves
 
-- Shared-mailbox style quote inbox workflow
-- SQLite persistence for threads, cases, drafts, and event history
-- Local `.eml` ingestion for fast testing
-- Outlook shared-mailbox integration via Microsoft Graph
-- RFQ triage and missing-information detection
-- Draft generation for clarification, status replies, and lightweight follow-up
+When a buyer sends RFQs to multiple suppliers, the responses come back in unstructured email form — varying formats, missing fields, inconsistent terminology. Reviewing each response manually is time-consuming and error-prone. ForgeFlow automates the triage layer so buyers can focus on decision-making rather than inbox management.
+
+## What ForgeFlow extracts from supplier quote emails
+
+- **Price breaks** — e.g. `100@$24.00, 500@$18.00, 1000@$15.00`
+- **Production lead time** — e.g. `8 weeks`
+- **Long lead time components** — part numbers with lead time ≥ 8 weeks
+- **MOQ** — minimum order quantity if stated
+- **Payment terms** — e.g. `Net 30`
+- **NRE** — non-recurring engineering cost if applicable
+- **COO** — country of origin (relevant for landed cost comparison)
+- **Missing fields** — flags what needs to be followed up with the supplier
+
+## Quote classification
+
+Each supplier email thread is classified into one of:
+
+| Classification | Meaning |
+|---|---|
+| `quote_received` | Supplier sent a complete quote |
+| `quote_incomplete` | Quote received but key fields are missing |
+| `supplier_followup` | Supplier is following up on a previously sent quote |
+| `ignore` | Not actionable |
+
+## Draft generation
+
+When a quote is incomplete, ForgeFlow automatically drafts a follow-up email to the supplier requesting the missing information. Buyers review and approve before sending.
 
 ## Project structure
 
-- `src/forgeflow/`: core app code
-- `data/sample_inbox/`: sample quote-related emails
-- `data/outbox/`: local sent-output directory created at runtime
-- `data/forgeflow.db`: SQLite database created at runtime
+```
+src/forgeflow/         # core app code
+data/sample_emails/    # 5 sample supplier quote emails for testing
+data/eval_cases/       # evaluation test cases with expected extraction results
+data/outbox/           # local sent-output directory
+data/forgeflow.db      # SQLite database (created at runtime)
+docs/                  # workflow and setup documentation
+```
 
-## Quick start
-
-Use the source tree directly with the local test inbox:
+## Quick start (local mode)
 
 ```bash
 PYTHONPATH=src python3 -m forgeflow.cli init
@@ -29,78 +52,47 @@ PYTHONPATH=src python3 -m forgeflow.cli list-cases
 PYTHONPATH=src python3 -m forgeflow.cli list-drafts
 ```
 
-Send one generated draft to the local outbox:
+Send a draft reply to a supplier:
 
 ```bash
 PYTHONPATH=src python3 -m forgeflow.cli send <thread_id>
 ```
 
-You can also install the package locally and use the `forgeflow` command:
-
-```bash
-python3 -m pip install -e .
-forgeflow sync
-```
-
 ## Outlook mode
 
-ForgeFlow can also read from and send through an Outlook mailbox using Microsoft Graph.
+ForgeFlow connects to a real Outlook mailbox via Microsoft Graph.
 
 Required environment variables:
 
 ```bash
 export FORGEFLOW_OUTLOOK_ACCESS_TOKEN="..."
-export FORGEFLOW_OUTLOOK_MAILBOX="quotes@company.com"
+export FORGEFLOW_OUTLOOK_MAILBOX="quotes@yourcompany.com"
 ```
 
-Optional environment variables:
-
-```bash
-export FORGEFLOW_OUTLOOK_FOLDER="Inbox"
-export FORGEFLOW_OUTLOOK_TOP="25"
-```
-
-Run the same commands with `--provider outlook`:
+Run with `--provider outlook`:
 
 ```bash
 PYTHONPATH=src python3 -m forgeflow.cli --provider outlook sync
 PYTHONPATH=src python3 -m forgeflow.cli --provider outlook list-cases
 PYTHONPATH=src python3 -m forgeflow.cli --provider outlook list-drafts
-PYTHONPATH=src python3 -m forgeflow.cli --provider outlook send <thread_id>
 ```
 
-In Outlook mode:
+See `docs/microsoft_graph_setup.md` for full setup instructions.
 
-- `sync` pulls recent messages from the configured mailbox folder using Microsoft Graph
-- thread IDs come from Outlook `conversationId`
-- `send` sends the draft through the configured Outlook mailbox and marks it as sent locally
+## How it works
 
-## How the prototype works
+1. Emails are ingested from local `.eml` files or Outlook via Microsoft Graph
+2. Each thread is classified by quote status
+3. Structured fields are extracted using regex-based parsing
+4. Cases and extracted data are persisted in SQLite
+5. If key fields are missing, a draft follow-up is generated for buyer review
+6. Buyer approves and sends via `forgeflow send`
 
-1. `.eml` files in `data/sample_inbox/` are parsed into normalized messages.
-2. Messages are grouped into lightweight threads.
-3. Each thread is classified into a quote workflow type.
-4. Structured fields are extracted:
-   - customer email
-   - due date
-   - part numbers
-   - quantities
-   - missing fields
-5. ForgeFlow creates or updates a local quote case in SQLite.
-6. If needed, ForgeFlow generates a draft clarification or follow-up email.
-7. `send` writes the outbound email content to `data/outbox/`.
+## Roadmap
 
-## Extension points
-
-The current local mailbox adapter is intentionally simple. To extend this toward production:
-
-- replace the heuristic Graph token flow with tenant-specific OAuth or app credentials
-- replace heuristic extraction with an LLM-assisted extractor
-- add a review dashboard on top of the SQLite store
-- add scheduled follow-up jobs instead of manual sync
-
-## Notes
-
-- This prototype is local-only.
-- Outlook integration requires a valid Microsoft Graph access token.
-- Local mode simulates draft sending by writing text files into the outbox.
+- [ ] Automated supplier follow-up when RFQ due date is approaching (Issue #4)
+- [ ] LLM-assisted extraction for unstructured quote formats
+- [ ] Attachment parsing (Excel/PDF quote sheets)
+- [ ] Multi-supplier comparison view
+- [ ] Scheduled sync and follow-up reminders
+- [ ] Full OAuth flow for production Outlook integration

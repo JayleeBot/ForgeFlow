@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ForgeFlow</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e2433; background: #fff; }
+  a { text-decoration: none; color: inherit; }
+
+  /* NAV */
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 0 48px; height: 64px; border-bottom: 1px solid #e8e8e6; background: #fff; position: sticky; top: 0; z-index: 100; }
+  .nav-logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 16px; }
+  .nav-logo-icon { width: 32px; height: 32px; background: #1e2433; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .nav-logo-icon svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-links { display: flex; gap: 32px; font-size: 14px; color: #6b7280; }
+  .nav-links a:hover { color: #1e2433; }
+  .btn-gold { background: #c9923a; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+  .btn-gold:hover { background: #b5802f; }
+
+  /* HERO */
+  .hero { text-align: center; padding: 96px 48px 72px; max-width: 800px; margin: 0 auto; }
+  .hero-badge { display: inline-block; background: #f3f4f6; color: #6b7280; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; padding: 6px 16px; border-radius: 100px; margin-bottom: 32px; }
+  .hero h1 { font-size: 60px; font-weight: 700; line-height: 1.1; color: #1e2433; margin-bottom: 12px; }
+  .hero h1 span { color: #1e2433; text-decoration: underline; text-decoration-color: #c9923a; text-underline-offset: 6px; }
+  .hero-sub { font-size: 18px; color: #6b7280; line-height: 1.6; max-width: 580px; margin: 0 auto 40px; }
+  .hero-form { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .hero-form input { padding: 12px 20px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; width: 280px; outline: none; }
+  .hero-form input:focus { border-color: #c9923a; }
+  .btn-gold-lg { background: #c9923a; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .btn-gold-lg:hover { background: #b5802f; }
+  .hero-note { font-size: 13px; color: #9ca3af; }
+  .trust-bar { display: flex; justify-content: center; gap: 40px; padding: 24px 48px; border-top: 1px solid #f0f0ee; flex-wrap: wrap; }
+  .trust-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #6b7280; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #c9923a; flex-shrink: 0; }
+
+  /* HOW IT WORKS */
+  .section-gray { background: #f7f7f5; padding: 80px 48px; }
+  .section-white { background: #fff; padding: 80px 48px; }
+  .section-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #9ca3af; margin-bottom: 16px; }
+  .section-title { font-size: 36px; font-weight: 700; color: #1e2433; margin-bottom: 48px; max-width: 500px; }
+  .cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; max-width: 1100px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 12px; padding: 32px 28px; }
+  .card-icon { width: 40px; height: 40px; background: #f3f4f6; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+  .card-icon svg { width: 20px; height: 20px; fill: none; stroke: #6b7280; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .card-num { float: right; font-size: 28px; font-weight: 700; color: #e5e7eb; }
+  .card h3 { font-size: 16px; font-weight: 600; color: #1e2433; margin-bottom: 10px; }
+  .card p { font-size: 14px; color: #6b7280; line-height: 1.6; }
+
+  /* FEATURES */
+  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 40px; max-width: 1100px; margin: 0 auto; }
+  .feature { }
+  .feature-icon { width: 40px; height: 40px; background: #f3f4f6; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+  .feature-icon svg { width: 20px; height: 20px; fill: none; stroke: #6b7280; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .feature h3 { font-size: 16px; font-weight: 600; color: #1e2433; margin-bottom: 8px; }
+  .feature p { font-size: 14px; color: #6b7280; line-height: 1.6; }
+
+  /* WHO IT'S FOR */
+  .who-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; max-width: 1100px; margin: 0 auto 40px; }
+  .who-card { background: #f7f7f5; border-radius: 12px; padding: 32px 28px; }
+  .who-card-icon { width: 40px; height: 40px; background: #fff; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; }
+  .who-card-icon svg { width: 20px; height: 20px; fill: none; stroke: #6b7280; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .who-card h3 { font-size: 17px; font-weight: 600; color: #1e2433; margin-bottom: 10px; }
+  .who-card p { font-size: 14px; color: #6b7280; line-height: 1.6; }
+  .sound-box { background: #f7f7f5; border-radius: 12px; padding: 28px 32px; max-width: 1100px; margin: 0 auto; }
+  .sound-label { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #9ca3af; margin-bottom: 20px; }
+  .sound-label svg { width: 16px; height: 16px; fill: none; stroke: #9ca3af; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sound-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px 40px; }
+  .sound-item { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: #6b7280; padding: 4px 0; }
+
+  /* CTA */
+  .cta-section { background: #f7f7f5; padding: 80px 48px; }
+  .cta-box { background: #fff; border-radius: 16px; padding: 56px 48px; max-width: 1100px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 40px; flex-wrap: wrap; }
+  .cta-box h2 { font-size: 30px; font-weight: 700; color: #1e2433; margin-bottom: 12px; }
+  .cta-box p { font-size: 15px; color: #6b7280; max-width: 480px; line-height: 1.6; }
+
+  /* FOOTER */
+  footer { background: #f7f7f5; padding: 32px 48px; border-top: 1px solid #e8e8e6; display: flex; align-items: center; justify-content: space-between; flex-wrap: gap; }
+  .footer-logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+  .footer-links { display: flex; gap: 24px; font-size: 13px; color: #9ca3af; }
+  .footer-links a:hover { color: #1e2433; }
+  .footer-badge { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e8e8e6; border-radius: 8px; padding: 8px 14px; font-size: 13px; color: #6b7280; }
+  .footer-badge svg { width: 16px; height: 16px; fill: none; stroke: #3b82f6; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .footer-copy { font-size: 12px; color: #9ca3af; text-align: right; margin-top: 6px; }
+
+  .section-inner { max-width: 1100px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 16 16"><path d="M3 8h10M8 3l5 5-5 5"/></svg>
+    </div>
+    ForgeFlow
+  </div>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#who">Who it's for</a>
+  </div>
+  <button class="btn-gold" onclick="document.querySelector('.hero-form input').focus()">Join Waitlist</button>
+</nav>
+
+<!-- HERO -->
+<section>
+  <div class="hero">
+    <div class="hero-badge">AI EMAIL AGENT · PROCUREMENT &amp; SOURCING</div>
+    <h1>Your inbox, finally<br><span>working for you</span></h1>
+    <p class="hero-sub">ForgeFlow monitors your quote inbox, triages supplier responses, extracts structured pricing, and drafts follow-ups — so your team can focus on decisions, not data entry.</p>
+    <div class="hero-form">
+      <input type="email" placeholder="you@company.com" />
+      <button class="btn-gold-lg">Join the Waitlist →</button>
+    </div>
+    <p class="hero-note">No credit card required · Free early access</p>
+  </div>
+  <div class="trust-bar">
+    <span class="trust-item"><span class="dot"></span>Processes PDFs, Excel &amp; plain-text emails</span>
+    <span class="trust-item"><span class="dot"></span>Works with any inbox</span>
+    <span class="trust-item"><span class="dot"></span>Private &amp; secure by default</span>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section-gray" id="how">
+  <div class="section-inner">
+    <p class="section-label">HOW IT WORKS</p>
+    <h2 class="section-title">From scattered emails to structured data in minutes</h2>
+    <div class="cards-grid">
+      <div class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 20 20"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M2 7l8 5 8-5"/></svg>
+        </div>
+        <span class="card-num">01</span>
+        <h3>Connect your quote inbox</h3>
+        <p>Link the email account your team uses for supplier communication. ForgeFlow starts monitoring immediately — no forwarding rules or custom addresses needed.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 20 20"><rect x="3" y="3" width="14" height="14" rx="2"/><path d="M7 10h6M10 7v6"/></svg>
+        </div>
+        <span class="card-num">02</span>
+        <h3>AI reads and structures every quote</h3>
+        <p>Attachments, inline pricing tables, scattered line items — ForgeFlow extracts it all into clean, normalized data. It also flags ambiguous replies and drafts clarification emails.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">
+          <svg viewBox="0 0 20 20"><path d="M4 14l4-4 3 3 5-6"/><path d="M2 4h16v12H2z" rx="2"/></svg>
+        </div>
+        <span class="card-num">03</span>
+        <h3>Review, compare, and decide</h3>
+        <p>See all supplier responses side-by-side in one workspace. Every field is traceable back to the original email, so your audit trail is automatic.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section-white" id="features">
+  <div class="section-inner">
+    <p class="section-label">FEATURES</p>
+    <h2 class="section-title">Everything your sourcing team actually needs</h2>
+    <div class="features-grid">
+      <div class="feature">
+        <div class="feature-icon">
+          <svg viewBox="0 0 20 20"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M2 7l8 5 8-5"/></svg>
+        </div>
+        <h3>Automatic inbox triage</h3>
+        <p>Every incoming supplier email is classified, tagged, and linked to the right RFQ — no manual sorting.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h8M4 14h10"/></svg>
+        </div>
+        <h3>Structured data extraction</h3>
+        <p>Unit prices, lead times, MOQs, payment terms — pulled from any format and normalized into clean fields.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg viewBox="0 0 20 20"><path d="M4 4h12v3l-4 3 4 3v3H4v-3l4-3-4-3V4z"/></svg>
+        </div>
+        <h3>Follow-up drafting</h3>
+        <p>When a quote is incomplete, ForgeFlow drafts a targeted follow-up and queues it for one-click sending.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg viewBox="0 0 20 20"><path d="M3 6h6v12H3zM11 2h6v16h-6z"/></svg>
+        </div>
+        <h3>Side-by-side comparison</h3>
+        <p>Compare all supplier responses in one view. Flag the winner and move straight to approval.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2z"/><path d="M10 6v4l3 2"/></svg>
+        </div>
+        <h3>Local-first &amp; private</h3>
+        <p>Your data stays on your infrastructure. No third-party LLM training on your supplier relationships.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">
+          <svg viewBox="0 0 20 20"><path d="M9 11l3 3L18 4"/><path d="M20 12v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2h9"/></svg>
+        </div>
+        <h3>Full audit trail</h3>
+        <p>Every extracted data point is traceable to the original message. Compliance teams breathe easy.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHO IT'S FOR -->
+<section class="section-gray" id="who">
+  <div class="section-inner">
+    <p class="section-label">WHO IT'S FOR</p>
+    <h2 class="section-title">Built for hardware and manufacturing procurement</h2>
+    <div class="who-grid">
+      <div class="who-card">
+        <div class="who-card-icon">
+          <svg viewBox="0 0 20 20"><path d="M10 2a4 4 0 100 8 4 4 0 000-8zM4 18a6 6 0 0112 0"/></svg>
+        </div>
+        <h3>Procurement Managers</h3>
+        <p>You run RFQ cycles for hardware components and receive dozens of supplier responses across email threads, PDFs, and spreadsheets. Consolidating them by hand is a full day's work — ForgeFlow does it in seconds.</p>
+      </div>
+      <div class="who-card">
+        <div class="who-card-icon">
+          <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2"/></svg>
+        </div>
+        <h3>Sourcing Teams</h3>
+        <p>You're constantly chasing suppliers for missing lead times, incomplete pricing tiers, and unclear payment terms. ForgeFlow identifies the gaps and drafts the follow-ups before you even open the thread.</p>
+      </div>
+    </div>
+    <div class="sound-box">
+      <div class="sound-label">
+        <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>
+        SOUND FAMILIAR?
+      </div>
+      <div class="sound-items">
+        <div class="sound-item"><span class="dot"></span>Spend 4–6 hours per RFQ cycle on manual data entry</div>
+        <div class="sound-item"><span class="dot"></span>Miss pricing differences buried in attachment footnotes</div>
+        <div class="sound-item"><span class="dot"></span>Lose track of which suppliers still owe you a response</div>
+        <div class="sound-item"><span class="dot"></span>Struggle to keep an audit trail for compliance reviews</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="cta-box">
+    <div>
+      <h2>Ready to stop drowning in supplier emails?</h2>
+      <p>Join the waitlist and be among the first procurement teams to automate quote processing — without giving up control of your data.</p>
+    </div>
+    <button class="btn-gold-lg" style="font-size:16px; padding:14px 28px;">Get Early Access →</button>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div>
+    <div class="footer-logo">
+      <div class="nav-logo-icon">
+        <svg viewBox="0 0 16 16" style="width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M3 8h10M8 3l5 5-5 5"/></svg>
+      </div>
+      ForgeFlow
+    </div>
+  </div>
+  <div class="footer-links">
+    <a href="#">Privacy</a>
+    <a href="#">Terms</a>
+    <a href="#">Contact</a>
+  </div>
+  <div>
+    <div class="footer-badge">
+      <svg viewBox="0 0 16 16"><rect x="1" y="3" width="14" height="10" rx="2"/><path d="M1 6l7 4 7-4"/></svg>
+      Integrates with Microsoft Outlook
+    </div>
+    <p class="footer-copy">© 2026 ForgeFlow, Inc.</p>
+  </div>
+</footer>
+
+</body>
+</html>

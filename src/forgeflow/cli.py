@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from forgeflow.config import AppConfig
 from forgeflow.engine import Engine
+from forgeflow.evaluate import run_eval
 from forgeflow.mailbox import build_mailbox
 from forgeflow.store import Store
 
@@ -20,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("init", help="Initialize local data directories and SQLite database")
+    subparsers.add_parser("eval", help="Run extraction eval cases and report pass/fail")
     subparsers.add_parser("sync", help="Ingest supplier emails and update quote cases")
     subparsers.add_parser("list-cases", help="List current quote cases")
     subparsers.add_parser("list-drafts", help="List current drafts")
@@ -33,6 +36,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     root = Path.cwd()
+
+    if args.command == "eval":
+        sys.exit(0 if run_eval(root) else 1)
+
     config = AppConfig.from_root(root)
     config.ensure_dirs()
     store = Store(config.db_path)

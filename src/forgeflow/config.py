@@ -17,7 +17,7 @@ class AppConfig:
         return cls(
             data_dir=data_dir,
             db_path=data_dir / "forgeflow.db",
-            inbox_dir=data_dir / "sample_inbox",
+            inbox_dir=data_dir / "sample_emails",
             outbox_dir=data_dir / "outbox",
         )
 

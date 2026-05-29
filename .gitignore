@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+.env
 
 data/forgeflow.db
 data/outbox/

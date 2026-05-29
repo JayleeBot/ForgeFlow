@@ -5,3 +5,5 @@ __pycache__/
 
 data/forgeflow.db
 data/outbox/
+logs/
+.deepeval/

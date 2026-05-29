@@ -13,6 +13,9 @@ dependencies = [
     "uvicorn>=0.29",
 ]
 
+[project.optional-dependencies]
+eval = ["deepeval>=4.0"]
+
 [project.scripts]
 forgeflow = "forgeflow.cli:main"
 

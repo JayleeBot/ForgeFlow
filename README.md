@@ -26,11 +26,6 @@ flowchart TB
         MERGE["Merge into quote state<br/>fill gaps, detect conflicts"]
         CHK["Completion check + decision flags<br/>vs RFQ.required_fields and thresholds"]
     end
-    subgraph DB["State (SQLite)"]
-        RFQDB[("RFQ + required_fields")]
-        SQDB[("SupplierQuote field_state")]
-        EV[("Event log")]
-    end
     subgraph HITL["Human-in-the-loop"]
         DRAFT["Draft follow-up<br/>only the missing required fields"]
         DASH["Dashboard: review / approve / send"]
@@ -40,9 +35,7 @@ flowchart TB
 
     BUYER --> MBX
     SUP --> MBX --> PARSE --> EX --> MERGE --> CHK
-    MBX --> REQ --> RFQDB --> CHK
-    MERGE --> SQDB
-    MERGE --> EV
+    MBX --> REQ --> CHK
     CHK -->|outstanding| DRAFT --> DASH --> MBX
     CHK -->|satisfied| NOTIFY --> COMPARE
 ```
@@ -51,7 +44,6 @@ flowchart TB
 
 - **Ingest** — reads supplier replies (and the buyer's RFQ) from Outlook/Graph or local `.eml`, cleans them, and links each email to its RFQ + supplier thread.
 - **Agent core (Claude)** — derives the per-RFQ requirement spec from the buyer's email; extracts fields from each supplier reply with a strict *verbatim-or-null* grounding rule; merges them into a running quote record; checks completion and raises decision flags.
-- **State (SQLite)** — the RFQ + its `required_fields`, the per-supplier `field_state` that accumulates across rounds, and an append-only event log for audit.
 - **Human-in-the-loop** — targeted follow-up drafts (only the missing required fields) that the buyer reviews and approves in the dashboard; nothing sends without approval.
 - **Outputs** — a "ready to review" notification when the RFQ's required set is satisfied, and a multi-supplier comparison that weighs more than price (landed cost incl. tariff by COO, lead time, MOQ feasibility).
 
@@ -61,7 +53,7 @@ flowchart TB
 flowchart TD
     R(["Supplier reply"]) --> M["Map to RFQ + supplier"]
     M --> E["Extract fields (grounded)"]
-    E --> U["Merge into SupplierQuote.field_state<br/>fill outstanding, detect conflicts, keep provenance"]
+    E --> U["Merge into the running quote record<br/>fill outstanding, detect conflicts"]
     U --> K["Evaluate vs RFQ.required_fields<br/>+ run decision flags"]
     K --> D{"Required set<br/>satisfied?"}
     D -- No --> F["Draft follow-up<br/>only outstanding required fields"]

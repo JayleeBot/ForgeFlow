@@ -1,4 +1,4 @@
-# Buyer_RFQ_review for ForgeFlow
+# Buyer RFQ Review Workflow for ForgeFlow
 
 ## Business Context
 
@@ -8,10 +8,10 @@ Common pain points in real-world RFQ workflows:
 
 - **Incomplete supplier responses**: Suppliers frequently omit critical fields such as MOQ, lead time, or unit price, requiring buyers to send follow-up emails manually.
 - **Hidden long lead time parts**: In a multi-line BOM, one or two components with 20+ week lead times can delay an entire production run. These are easy to miss when reviewing responses manually.
-- **No price breakdown**: Suppliers sometimes quote a total price without separating NRE (Non-Recurring Engineering) costs from unit price, making it impossible to compare quotes accurately across vendors.
+- **No NRE breakdown**: Suppliers sometimes quote a total price without separating NRE (Non-Recurring Engineering) costs from unit price, making it impossible to compare quotes accurately across vendors.
 - **Quote validity not stated**: Without a validity date, a quoted price may no longer be honored by the time a PO is issued.
 
-ForgeFlow is designed to act as a **Buyer-side assistant** that monitors supplier responses and flags these issues automatically.
+ForgeFlow is designed to act as a **buyer-side assistant** that monitors supplier responses and flags these issues automatically.
 
 ---
 
@@ -65,9 +65,31 @@ Suggested action: Send follow-up requesting MOQ and validity date.
 
 ### Step 5: ForgeFlow drafts a follow-up email
 
-ForgeFlow generates a draft follow-up to the supplier requesting the missing information. The buyer reviews and sends.
+ForgeFlow generates a draft follow-up to the supplier requesting only the missing fields. The buyer reviews the draft in the dashboard and sends it.
 
-### Step 6: BOM-level lead time analysis (planned)
+### Step 6: ForgeFlow monitors the follow-up response
+
+After the follow-up is sent, ForgeFlow continues to monitor the inbox for the supplier's next reply. When a new reply arrives, ForgeFlow repeats Steps 2–5:
+
+- Re-reads the supplier reply
+- Re-extracts all fields
+- Checks again for any remaining missing information
+- Drafts another follow-up if gaps remain
+
+This loop continues until all required fields are present.
+
+### Step 7: Buyer notification — RFQ ready to review
+
+Once all required fields are confirmed complete, ForgeFlow sends the buyer a notification:
+
+```
+RFQ1234 is ready to review.
+All required fields received: unit price, MOQ, lead time, NRE, validity date, part number confirmation.
+```
+
+The buyer can then open the dashboard to review the full quote summary and decide next steps (issue PO, compare suppliers, negotiate).
+
+### Step 8: BOM-level lead time analysis (planned)
 
 When a buyer uploads a BOM, ForgeFlow cross-references all quoted lead times against the BOM line items and identifies:
 
@@ -105,4 +127,5 @@ ForgeFlow automates this triage layer, ensuring:
 - No missing fields are overlooked
 - Long lead time parts are surfaced immediately
 - Follow-up drafts are ready without manual writing
+- The buyer is notified only when a quote is truly complete and ready to act on
 - All quote activity is logged in a structured database for audit and analysis

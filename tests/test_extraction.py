@@ -25,10 +25,15 @@ from deepeval import assert_test  # noqa: E402
 from deepeval.metrics import BaseMetric  # noqa: E402
 from deepeval.test_case import LLMTestCase  # noqa: E402
 
-from forgeflow.extractor import extract_case  # noqa: E402
 from forgeflow.parser import parse_email_file  # noqa: E402
 
 _NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _extract(messages):
+    # LLM only: the eval grades the Claude agent (hits the API). No regex path.
+    from forgeflow.agent import extract_case
+    return extract_case(messages)
 
 
 def _load_test_cases() -> list[LLMTestCase]:
@@ -36,15 +41,17 @@ def _load_test_cases() -> list[LLMTestCase]:
     test_cases = []
     for case in cases:
         message = parse_email_file(ROOT / case["email_file"])
-        extracted = extract_case([message])
+        extracted = _extract([message])
+        email_text = f"{message.subject}\n{message.body_text}"
         test_cases.append(
             LLMTestCase(
-                input=case["email_file"],
+                name=case["email_file"],
+                input=email_text,
                 actual_output=extracted.summary,
                 additional_metadata={
                     "extracted": asdict(extracted),
                     "expected": case,
-                    "email_text": f"{message.subject}\n{message.body_text}",
+                    "email_text": email_text,
                 },
             )
         )

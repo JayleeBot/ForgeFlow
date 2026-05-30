@@ -1,0 +1,26 @@
+description: ForgeFlow supplier-quote extraction (Claude agent)
+
+# Each test supplies its own email via vars; the prompt is a passthrough.
+prompts:
+  - "{{email_file}}"
+
+providers:
+  - id: file://promptfoo/provider.py
+    label: claude-agent
+    config:
+      pythonExecutable: python3
+
+# Tests are generated from data/eval_cases/eval_cases.json.
+tests: file://promptfoo/tests.py:load_tests
+
+# The same four checks the agent must pass, as Python assertions.
+defaultTest:
+  assert:
+    - type: python
+      value: file://promptfoo/asserts.py:check_classification
+    - type: python
+      value: file://promptfoo/asserts.py:check_field_presence
+    - type: python
+      value: file://promptfoo/asserts.py:check_missing_fields
+    - type: python
+      value: file://promptfoo/asserts.py:check_grounding

@@ -14,8 +14,7 @@ dependencies = [
     "uvicorn>=0.29",
 ]
 
-[project.optional-dependencies]
-eval = ["deepeval>=4.0"]
+# Eval tooling is Promptfoo (Node CLI): `npx promptfoo@latest eval` / `view`.
 
 [project.scripts]
 forgeflow = "forgeflow.cli:main"

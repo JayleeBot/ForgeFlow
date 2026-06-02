@@ -45,8 +45,8 @@
     "expected_price_breaks": false,
     "expected_production_lead_time": false,
     "expected_long_lead_time_parts": false,
-    "expected_payment_terms": true,
+    "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Promotional spam email. Classified as 'ignore' so missing_fields check is skipped. No structured pricing or lead times. Payment terms returns a false positive ('cod') matched inside 'Use code:' in the promo text — known regex gap. Missing fields correctly empty because ignore classification bypasses the check."
+    "notes": "Promotional spam email. Classified as 'ignore'. No pricing, lead times, or real payment terms. The word 'cod' appears inside 'Use code:' in the promo text — the AI correctly ignores this as it is not a payment term. Missing fields correctly empty because ignore classification bypasses the check."
   }
 ]

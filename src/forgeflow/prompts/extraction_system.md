@@ -17,7 +17,7 @@ Only record a value that appears VERBATIM in the email. Copy numbers exactly as 
 Set `classification` to exactly one of:
 
 - `quote_received` — the supplier is providing a quote (prices, lead times, line items, terms).
-- `supplier_followup` — the supplier is following up on / checking in about a previously submitted quote, not sending a fresh one.
+- `supplier_followup` — the supplier is following up on / checking in about a previously submitted quote. Note: a follow-up email often recaps the original pricing and lead times in the body — extract any quote data that is present, even if the email's primary purpose is to check in.
 - `ignore` — not an actionable supplier quote (e.g. promotions, spam, unrelated mail).
 
 ## Fields

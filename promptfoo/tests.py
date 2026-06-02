@@ -29,7 +29,7 @@ def load_tests():
                     "expected_production_lead_time": case["expected_production_lead_time"],
                     "expected_long_lead_time_parts": case["expected_long_lead_time_parts"],
                     "expected_payment_terms": case["expected_payment_terms"],
-                    "expected_missing_fields": case["expected_missing_fields"],
+                    "expected_missing_fields": json.dumps(case["expected_missing_fields"]),
                 },
             }
         )

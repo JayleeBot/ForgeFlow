@@ -39,7 +39,7 @@ def check_field_presence(output, context):
 def check_missing_fields(output, context):
     ex = json.loads(output)
     got = sorted(ex["missing_fields"])
-    expected = sorted(context["vars"]["expected_missing_fields"])
+    expected = sorted(json.loads(context["vars"]["expected_missing_fields"]))
     return _result(got == expected, f"missing_fields: got {got}, expected {expected}")
 
 

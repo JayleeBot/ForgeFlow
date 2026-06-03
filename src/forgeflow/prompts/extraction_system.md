@@ -22,7 +22,7 @@ Set `classification` to exactly one of:
 
 ## Fields
 
-- `price_breaks`: array of strings, one per priced line item, formatted as `"QTY@$UNITPRICE"` using plain numbers with no thousands separators (e.g. `"500@$18.50"`). Only include items that have BOTH a quantity and a unit price stated. Omit items with TBD / missing / "to be confirmed" prices.
+- `price_breaks`: array of strings, one per priced line item, formatted as `"PARTNUM: QTY@$UNITPRICE"` (e.g. `"ET-PCBA-MAIN-V2: 500@$18.50"`). If no part number is stated for a line item, omit the part number and use `"QTY@$UNITPRICE"` only. Use plain numbers with no thousands separators. Only include items that have BOTH a quantity and a unit price stated. Omit items with TBD / missing / "to be confirmed" prices.
 - `production_lead_time`: the lead-time phrase copied verbatim (e.g. `"15 business days"`, `"32 WEEKS"`). Use the first/longest production lead time stated. `null` if none.
 - `long_lead_time_parts`: array of strings for parts whose lead time is stated in WEEKS and is 8 weeks or more, formatted `"<PART_NUMBER>: <N>wks"` (e.g. `"IC-TPS65987DDFT: 32wks"`). Lead times given in business days are NOT long-lead — do not include them. Empty array if none.
 - `moq`: minimum order quantity if explicitly stated, else `null`.

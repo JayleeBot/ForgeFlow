@@ -38,7 +38,7 @@ _EXTRACTION_TOOL = {
             "price_breaks": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "One per priced line item, as 'QTY@$UNITPRICE' (plain numbers).",
+                "description": "One per priced line item, as 'PARTNUM: QTY@$UNITPRICE' (e.g. 'ET-PCBA-MAIN-V2: 500@$18.50'). Omit part number if not stated.",
             },
             "production_lead_time": {"type": ["string", "null"]},
             "long_lead_time_parts": {"type": "array", "items": {"type": "string"}},

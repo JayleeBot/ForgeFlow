@@ -64,6 +64,14 @@ SUPPLIER_FOLLOWUP_HINTS = (
     "wanted to follow up",
     "did you receive our quote",
 )
+# Buyer/agent emails request information rather than provide it.
+# These patterns take priority over SUPPLIER_FOLLOWUP_HINTS.
+BUYER_REQUEST_HINTS = (
+    "[forgeflow",
+    "automated follow-up on outstanding",
+    "we are still missing the following",
+    "flag for buyer",
+)
 
 
 @dataclass(slots=True)
@@ -114,6 +122,20 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
 
 
 def _classify(text: str) -> str:
+    # Classification must reflect the direction of information flow, not just
+    # keyword presence. The correct question is: is this email PROVIDING quote
+    # data (supplier → buyer) or REQUESTING it (buyer → supplier)?
+    #
+    # Pure keyword matching fails here because words like "follow-up" appear in
+    # both supplier check-ins and agent-generated chasers. Without checking
+    # direction, a buyer email asking "please confirm your payment terms" would
+    # match SUPPLIER_FOLLOWUP_HINTS and be misclassified as supplier_followup.
+    #
+    # Fix: check for buyer/agent signals first. These patterns indicate the email
+    # is outbound from the buyer side — requesting data, not supplying it — so
+    # they take priority over any supplier-side hints that might also match.
+    if any(hint in text for hint in BUYER_REQUEST_HINTS):
+        return "ignore"
     if any(hint in text for hint in SUPPLIER_FOLLOWUP_HINTS):
         return "supplier_followup"
     if any(hint in text for hint in QUOTE_RESPONSE_HINTS):

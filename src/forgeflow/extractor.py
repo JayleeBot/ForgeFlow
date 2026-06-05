@@ -72,6 +72,19 @@ BUYER_REQUEST_HINTS = (
     "we are still missing the following",
     "flag for buyer",
 )
+# Detects a supplier question directed at the buyer that must be answered before
+# the quote can be completed (e.g. "Could you confirm what grade of mold you need?").
+# Excludes polite closings ("let us know if you have any questions") by requiring a
+# specific action verb directly after the trigger phrase.
+_SUPPLIER_QUESTION_RE = re.compile(
+    r"(?:could you (?:confirm|clarify|provide|specify|advise)|"
+    r"can you (?:confirm|clarify|provide|specify)|"
+    r"please (?:confirm|clarify|advise|specify)|"
+    r"what (?:type|grade|level|version|specification|specs?) (?:of|do you)|"
+    r"which (?:option|version|grade|type|level))"
+    r"[^?]{0,300}\?",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -88,6 +101,7 @@ class ExtractedCase:
     coo: str | None
     missing_fields: list[str]
     summary: str
+    supplier_pending_question: str | None
 
 
 def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
@@ -103,8 +117,11 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
     payment_terms = _find_first(PAYMENT_RE, combined_text)
     nre = _find_nre(combined_text)
     coo = _find_first(COO_RE, combined_text)
+    supplier_pending_question = _detect_supplier_question(combined_text) if classification != "ignore" else None
     missing_fields = _derive_missing_fields(classification, price_breaks, production_lead_time, payment_terms)
-    summary = _build_summary(classification, supplier_name, price_breaks, production_lead_time, long_lead_time_parts, moq, payment_terms, nre, coo, missing_fields)
+    if supplier_pending_question and missing_fields:
+        missing_fields = ["buyer_input_required"]
+    summary = _build_summary(classification, supplier_name, price_breaks, production_lead_time, long_lead_time_parts, moq, payment_terms, nre, coo, missing_fields, supplier_pending_question)
     return ExtractedCase(
         classification=classification,
         supplier_name=supplier_name,
@@ -118,13 +135,14 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
         coo=coo,
         missing_fields=missing_fields,
         summary=summary,
+        supplier_pending_question=supplier_pending_question,
     )
 
 
 def _classify(text: str) -> str:
     # Classification must reflect the direction of information flow, not just
     # keyword presence. The correct question is: is this email PROVIDING quote
-    # data (supplier → buyer) or REQUESTING it (buyer → supplier)?
+    # data (supplier -> buyer) or REQUESTING it (buyer -> supplier)?
     #
     # Pure keyword matching fails here because words like "follow-up" appear in
     # both supplier check-ins and agent-generated chasers. Without checking
@@ -132,7 +150,7 @@ def _classify(text: str) -> str:
     # match SUPPLIER_FOLLOWUP_HINTS and be misclassified as supplier_followup.
     #
     # Fix: check for buyer/agent signals first. These patterns indicate the email
-    # is outbound from the buyer side — requesting data, not supplying it — so
+    # is outbound from the buyer side -- requesting data, not supplying it -- so
     # they take priority over any supplier-side hints that might also match.
     if any(hint in text for hint in BUYER_REQUEST_HINTS):
         return "ignore"
@@ -229,6 +247,11 @@ def _find_first(pattern: re.Pattern[str], text: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _detect_supplier_question(text: str) -> str | None:
+    match = _SUPPLIER_QUESTION_RE.search(text)
+    return match.group(0).strip() if match else None
+
+
 def _derive_missing_fields(
     classification: str,
     price_breaks: list[str],
@@ -258,6 +281,7 @@ def _build_summary(
     nre: str | None,
     coo: str | None,
     missing_fields: list[str],
+    supplier_pending_question: str | None,
 ) -> str:
     supplier = supplier_name or "Unknown supplier"
     prices = ", ".join(price_breaks) if price_breaks else "no pricing found"
@@ -267,9 +291,15 @@ def _build_summary(
     nre_str = nre or "none"
     coo_str = coo or "not stated"
     missing = ", ".join(missing_fields) if missing_fields else "none"
-    return (
+    summary = (
         f"{classification} from {supplier}; "
         f"prices: {prices}; PLT: {plt}; long-LT parts: {llt}; "
         f"MOQ: {moq or 'not stated'}; terms: {terms}; "
         f"NRE: {nre_str}; COO: {coo_str}; missing: {missing}"
     )
+    if supplier_pending_question:
+        summary += (
+            f" | FLAG FOR BUYER: Supplier is waiting for your input before completing "
+            f"the quote. Question: {supplier_pending_question}"
+        )
+    return summary

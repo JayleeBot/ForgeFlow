@@ -13,20 +13,25 @@ flowchart TD
     A([Supplier reply arrives\nin buyer's Outlook inbox])
     B[ForgeFlow reads email\nvia Microsoft Graph API]
     C[AI extracts key fields\nunit price · MOQ · lead time · NRE · validity · part confirmation]
+    Q{Supplier has a pending\nquestion that blocks\nthe quote?}
     D{All required fields\ncomplete?}
     F[AI drafts follow-up email\nasking for missing fields only]
     G[Buyer reviews draft\nin dashboard]
     H[Follow-up sent to supplier]
     I([Buyer notification\nRFQ1234 ready to review])
+    J[Flag sent to buyer:\nSupplier needs your input\nbefore quote can be completed]
 
     A --> B
     B --> C
-    C --> D
+    C --> Q
+    Q -- Yes --> J
+    Q -- No --> D
     D -- Yes --> I
     D -- Missing fields --> F
     F --> G
     G --> H
     H --> |Supplier replies again| B
+    J --> |Buyer responds to supplier| B
 ```
 
 ## Step-by-step Description
@@ -50,11 +55,11 @@ Using Claude, the agent parses the email and extracts the following fields:
 | Long lead time flag | ✅ | Any component with lead time > 12 weeks |
 | Part number confirmation | ✅ | Supplier confirms the correct part |
 
-**Step 4 — Check for missing fields**
-The agent checks which fields are present. Any missing required fields are flagged.
+**Step 4 — Check for supplier blocking question**
+Before checking for missing fields, the agent detects whether the supplier is asking the buyer a question that must be answered before the quote can be completed (e.g. "Could you confirm what grade of mold tooling you require?"). If so, the agent flags the buyer directly instead of drafting a supplier follow-up, preventing a pointless chase.
 
-**Step 5 — Draft follow-up email**
-If any fields are missing, the agent drafts a follow-up email asking the supplier only for the missing information. The draft is concise and professional.
+**Step 5 — Check for missing fields / draft follow-up**
+If no blocking question is present, the agent checks which required fields are present. If any are missing, it drafts a concise follow-up email asking the supplier only for the outstanding information.
 
 **Step 6 — Buyer reviews in dashboard**
 The buyer sees the draft in the ForgeFlow dashboard before anything is sent. They can edit or approve.

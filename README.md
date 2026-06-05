@@ -52,7 +52,10 @@ flowchart TD
     M --> E["Extract fields (grounded)"]
     E --> U["Merge into the running quote record<br/>fill outstanding, detect conflicts"]
     U --> K["Evaluate vs RFQ.required_fields<br/>+ run decision flags"]
-    K --> D{"Required set<br/>satisfied?"}
+    K --> Q{"Supplier has a pending<br/>question for the buyer?"}
+    Q -- Yes --> J["Flag buyer: supplier needs your input<br/>before quote can be completed"]
+    J -. buyer replies to supplier .-> R
+    Q -- No --> D{"Required set<br/>satisfied?"}
     D -- No --> F["Draft follow-up<br/>only outstanding required fields"]
     F --> A["Buyer approves in dashboard"]
     A --> S["Send"]

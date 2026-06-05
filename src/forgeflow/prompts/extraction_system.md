@@ -31,3 +31,15 @@ Set `classification` to exactly one of:
 - `coo`: country of origin if stated, else `null`.
 
 Call `record_quote` exactly once.
+
+## Edge cases
+
+### Quantity-adjusted price breaks (box qty or MOQ)
+Suppliers sometimes quote at quantities that differ from what the buyer requested because of box quantity or MOQ constraints. If the supplier provides an explanation (e.g. "our standard box quantity is 350 units so we have adjusted the tiers" or "our MOQ for this item is 1,000 units"), the quote is still **complete** — do NOT treat the adjusted quantities as missing price breaks. Extract the actual quantities and unit prices stated in the email exactly as written.
+
+### Supplier is asking the buyer a question
+If the supplier's email contains a question directed at the buyer that must be answered before the quote can be completed (e.g. "Could you confirm what grade of mold tooling you require?"), the agent should **not** chase the blocked fields. Instead:
+- Set `missing_fields` to `["buyer_input_required"]` rather than listing the specific fields that depend on the answer.
+- Include in the summary: `FLAG FOR BUYER: Supplier is waiting for your input before completing the quote. Question: [supplier's question]`
+
+This prevents the agent from sending a pointless follow-up asking for information the supplier has already said they cannot provide yet.

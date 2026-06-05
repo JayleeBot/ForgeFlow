@@ -45,9 +45,29 @@ ForgeFlow extracts and validates the following fields from each supplier respons
 | Long lead time flag | ✅ | Any component with lead time > 12 weeks |
 | Part number confirmation | ✅ | Supplier confirms the correct part |
 
-### Step 4: ForgeFlow flags missing or incomplete information
+### Step 4a: ForgeFlow checks for a supplier blocking question
 
-If any required field is missing, ForgeFlow generates a structured summary:
+Before checking for missing fields, ForgeFlow detects whether the supplier has asked the buyer a question that must be answered before the quote can be completed (e.g. "Could you confirm what grade of mold tooling you require?").
+
+If a blocking question is detected, ForgeFlow flags the buyer instead of drafting a supplier follow-up:
+
+```
+FLAG FOR BUYER — ACTION REQUIRED
+Supplier: j.liu@moldcraft.com
+Thread: Re: RFQ - Custom Injection Molded Enclosure ENC-CUSTOM-001
+
+Supplier is waiting for your input before they can complete the quote.
+Question: Could you confirm what grade of mold tooling you require
+(Class A hardened steel vs. Class B aluminum)?
+
+Please reply to the supplier directly or advise ForgeFlow on how to respond.
+```
+
+This prevents a pointless automated chase for fields the supplier has already said they cannot provide yet.
+
+### Step 4b: ForgeFlow flags missing or incomplete information
+
+If no blocking question is present and any required field is missing, ForgeFlow generates a structured summary:
 
 ```
 Supplier: supplier@example.com

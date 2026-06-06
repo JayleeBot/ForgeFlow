@@ -34,6 +34,8 @@ class QuoteCase:
     next_action: str | None
     summary: str | None
     last_message_at: datetime
+    last_followup_sent_at: datetime | None = None
+    followup_count: int = 0
 
 
 @dataclass(slots=True)

@@ -45,7 +45,7 @@ def main() -> None:
     store = Store(config.db_path)
     store.initialize()
     mailbox = build_mailbox(args.provider, config.inbox_dir, config.outbox_dir)
-    engine = Engine(store, mailbox)
+    engine = Engine(store, mailbox, config)
 
     try:
         if args.command == "init":

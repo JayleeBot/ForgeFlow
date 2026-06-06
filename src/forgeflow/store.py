@@ -44,7 +44,9 @@ class Store:
                 missing_fields TEXT,
                 next_action TEXT,
                 summary TEXT,
-                last_message_at TEXT NOT NULL
+                last_message_at TEXT NOT NULL,
+                last_followup_sent_at TEXT,
+                followup_count INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS drafts (
@@ -67,6 +69,15 @@ class Store:
             );
             """
         )
+        # Migration: add columns that may not exist in older databases
+        for stmt in [
+            "ALTER TABLE cases ADD COLUMN last_followup_sent_at TEXT",
+            "ALTER TABLE cases ADD COLUMN followup_count INTEGER NOT NULL DEFAULT 0",
+        ]:
+            try:
+                self.conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
         self.conn.commit()
 
     def has_message(self, message_id: str) -> bool:
@@ -129,6 +140,8 @@ class Store:
         return [row["thread_id"] for row in rows]
 
     def upsert_case(self, case: QuoteCase) -> None:
+        # last_followup_sent_at and followup_count are NOT overwritten on update —
+        # they are managed exclusively by mark_followup_sent().
         self.conn.execute(
             """
             INSERT INTO cases (
@@ -175,13 +188,25 @@ class Store:
         )
         self.conn.commit()
 
+    def mark_followup_sent(self, thread_id: str) -> None:
+        self.conn.execute(
+            """
+            UPDATE cases
+            SET last_followup_sent_at = ?, followup_count = followup_count + 1
+            WHERE thread_id = ?
+            """,
+            (datetime.utcnow().isoformat(), thread_id),
+        )
+        self.conn.commit()
+
     def get_case(self, thread_id: str) -> QuoteCase | None:
         row = self.conn.execute(
             """
             SELECT thread_id, status, classification, supplier_name, supplier_email,
                    price_breaks, production_lead_time, long_lead_time_parts,
                    moq, payment_terms, nre, coo,
-                   missing_fields, next_action, summary, last_message_at
+                   missing_fields, next_action, summary, last_message_at,
+                   last_followup_sent_at, followup_count
             FROM cases
             WHERE thread_id = ?
             """,
@@ -197,7 +222,8 @@ class Store:
             SELECT thread_id, status, classification, supplier_name, supplier_email,
                    price_breaks, production_lead_time, long_lead_time_parts,
                    moq, payment_terms, nre, coo,
-                   missing_fields, next_action, summary, last_message_at
+                   missing_fields, next_action, summary, last_message_at,
+                   last_followup_sent_at, followup_count
             FROM cases
             ORDER BY last_message_at DESC
             """
@@ -303,4 +329,6 @@ def _row_to_case(row: sqlite3.Row) -> QuoteCase:
         next_action=row["next_action"],
         summary=row["summary"],
         last_message_at=datetime.fromisoformat(row["last_message_at"]),
+        last_followup_sent_at=datetime.fromisoformat(row["last_followup_sent_at"]) if row["last_followup_sent_at"] else None,
+        followup_count=row["followup_count"] or 0,
     )

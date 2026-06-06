@@ -84,10 +84,11 @@ Each supplier email thread is classified into one of:
 
 | Classification | Meaning |
 |---|---|
-| `quote_received` | Supplier sent a complete quote |
-| `quote_incomplete` | Quote received but key fields are missing |
-| `supplier_followup` | Supplier is following up on a previously sent quote |
-| `ignore` | Not actionable |
+| `quote_received` | Supplier sent a quote (complete or partial — missing fields are checked separately) |
+| `supplier_reminder` | Supplier is chasing buyer for a response on a previously sent quote |
+| `ignore` | Not actionable (buyer outbound emails, spam, etc.) |
+
+> **Note:** `quote_incomplete` is a *status* derived by the workflow layer when a `quote_received` email is missing required fields — it is not a classification.
 
 ## Draft generation
 
@@ -97,7 +98,7 @@ When a quote is incomplete, ForgeFlow automatically drafts a follow-up email to 
 
 ```
 src/forgeflow/         # core app code
-data/sample_emails/    # 5 sample supplier quote emails for testing
+data/sample_emails/    # sample supplier quote emails for eval testing
 data/eval_cases/       # evaluation test cases with expected extraction results
 data/outbox/           # local sent-output directory
 data/forgeflow.db      # SQLite database (created at runtime)

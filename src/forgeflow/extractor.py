@@ -31,7 +31,7 @@ MOQ_RE = re.compile(
     re.IGNORECASE,
 )
 PAYMENT_RE = re.compile(
-    r"\b(net\s*\d+|net\s*\d+\s*days?|cod|prepay|50%\s*upfront|[0-9]+%\s*(?:upfront|deposit)[^,\n]{0,30})",
+    r"\b(net\s*\d+|net\s*\d+\s*days?|cod\b|prepay|50%\s*upfront|[0-9]+%\s*(?:upfront|deposit)[^,\n]{0,30})",
     re.IGNORECASE,
 )
 NRE_RE = re.compile(
@@ -64,10 +64,17 @@ SUPPLIER_FOLLOWUP_HINTS = (
     "wanted to follow up",
     "did you receive our quote",
 )
+# Supplier emails that reference a prior quote as still-valid and provide a
+# missing piece (NRE, payment terms, etc.). The quote thread is complete.
+_QUOTE_COMPLETION_HINTS = (
+    "previously quoted",
+    "remain as quoted",
+)
 # Buyer/agent emails request information rather than provide it.
 # These patterns take priority over SUPPLIER_FOLLOWUP_HINTS.
 BUYER_REQUEST_HINTS = (
     "[forgeflow",
+    "we are issuing an rfq",
     "automated follow-up on outstanding",
     "we are still missing the following",
     "flag for buyer",
@@ -107,9 +114,19 @@ class ExtractedCase:
 def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
     latest = messages[-1]
     combined_text = "\n".join(m.body_text for m in messages if m.body_text)
+    latest_lower = f"{latest.subject}\n{latest.body_text or ''}".lower()
     combined_lower = f"{latest.subject}\n{combined_text}".lower()
-    classification = _classify(combined_lower)
+    classification = _classify(latest_lower)
     supplier_name, supplier_email = _parse_sender(latest.sender)
+    if classification == "ignore":
+        summary = f"[{supplier_name or 'Unknown'}] Ignored — not a supplier quote or followup."
+        return ExtractedCase(
+            classification="ignore", supplier_name=supplier_name,
+            supplier_email=supplier_email, price_breaks=[],
+            production_lead_time=None, long_lead_time_parts=[], moq=None,
+            payment_terms=None, nre=None, coo=None, missing_fields=[],
+            summary=summary, supplier_pending_question=None,
+        )
     price_breaks = _extract_price_breaks(combined_text)
     production_lead_time = _find_first(PROD_LT_RE, combined_text)
     long_lead_time_parts = _extract_long_lead_parts(combined_text)
@@ -119,6 +136,8 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
     coo = _find_first(COO_RE, combined_text)
     supplier_pending_question = _detect_supplier_question(combined_text) if classification != "ignore" else None
     missing_fields = _derive_missing_fields(classification, price_breaks, production_lead_time, payment_terms)
+    if any(hint in combined_lower for hint in _QUOTE_COMPLETION_HINTS) and missing_fields:
+        missing_fields = []
     if supplier_pending_question and missing_fields:
         missing_fields = ["buyer_input_required"]
     summary = _build_summary(classification, supplier_name, price_breaks, production_lead_time, long_lead_time_parts, moq, payment_terms, nre, coo, missing_fields, supplier_pending_question)
@@ -147,15 +166,17 @@ def _classify(text: str) -> str:
     # Pure keyword matching fails here because words like "follow-up" appear in
     # both supplier check-ins and agent-generated chasers. Without checking
     # direction, a buyer email asking "please confirm your payment terms" would
-    # match SUPPLIER_FOLLOWUP_HINTS and be misclassified as supplier_followup.
+    # match SUPPLIER_FOLLOWUP_HINTS and be misclassified as supplier_reminder.
     #
     # Fix: check for buyer/agent signals first. These patterns indicate the email
     # is outbound from the buyer side -- requesting data, not supplying it -- so
     # they take priority over any supplier-side hints that might also match.
     if any(hint in text for hint in BUYER_REQUEST_HINTS):
         return "ignore"
+    if any(hint in text for hint in _QUOTE_COMPLETION_HINTS):
+        return "quote_received"
     if any(hint in text for hint in SUPPLIER_FOLLOWUP_HINTS):
-        return "supplier_followup"
+        return "supplier_reminder"
     if any(hint in text for hint in QUOTE_RESPONSE_HINTS):
         return "quote_received"
     return "ignore"

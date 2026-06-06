@@ -16,8 +16,10 @@ import anthropic
 
 from forgeflow.extractor import (
     ExtractedCase,
+    _QUOTE_COMPLETION_HINTS,
     _build_summary,
     _derive_missing_fields,
+    _detect_supplier_question,
     _parse_sender,
 )
 from forgeflow.models import EmailMessage
@@ -33,7 +35,7 @@ _EXTRACTION_TOOL = {
         "properties": {
             "classification": {
                 "type": "string",
-                "enum": ["quote_received", "supplier_followup", "ignore"],
+                "enum": ["quote_received", "supplier_reminder", "ignore"],
             },
             "price_breaks": {
                 "type": "array",
@@ -99,9 +101,14 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
     production_lead_time = data.get("production_lead_time")
     long_lead_time_parts = data.get("long_lead_time_parts") or []
     payment_terms = data.get("payment_terms")
+    supplier_pending_question = _detect_supplier_question(combined_text)
     missing_fields = _derive_missing_fields(
         classification, price_breaks, production_lead_time, payment_terms
     )
+    if any(hint in combined_text.lower() for hint in _QUOTE_COMPLETION_HINTS) and missing_fields:
+        missing_fields = []
+    if supplier_pending_question and missing_fields:
+        missing_fields = ["buyer_input_required"]
     summary = _build_summary(
         classification,
         supplier_name,
@@ -113,6 +120,7 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
         data.get("nre"),
         data.get("coo"),
         missing_fields,
+        supplier_pending_question,
     )
     return ExtractedCase(
         classification=classification,
@@ -126,5 +134,6 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
         nre=data.get("nre"),
         coo=data.get("coo"),
         missing_fields=missing_fields,
+        supplier_pending_question=supplier_pending_question,
         summary=summary,
     )

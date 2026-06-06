@@ -13,8 +13,9 @@ def run_eval(root: Path) -> bool:
 
     passed = 0
     for case in cases:
-        message = parse_email_file(root / case["email_file"])
-        extracted = extract_case([message])
+        thread_files = case.get("thread_emails", [case["email_file"]])
+        messages = [parse_email_file(root / f) for f in thread_files]
+        extracted = extract_case(messages)
         failures = _failed_checks(case, extracted)
         if not failures:
             passed += 1

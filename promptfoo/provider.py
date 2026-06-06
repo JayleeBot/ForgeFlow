@@ -19,7 +19,14 @@ from forgeflow.parser import parse_email_file  # noqa: E402
 
 
 def call_api(prompt, options, context):
-    email_file = context["vars"]["email_file"]
-    message = parse_email_file(ROOT / email_file)
-    extracted = extract_case([message])
+    thread_files = context["vars"].get("thread_emails")
+    if thread_files:
+        if isinstance(thread_files, str):
+            import json as _json
+            thread_files = _json.loads(thread_files)
+        messages = [parse_email_file(ROOT / f) for f in thread_files]
+    else:
+        email_file = context["vars"]["email_file"]
+        messages = [parse_email_file(ROOT / email_file)]
+    extracted = extract_case(messages)
     return {"output": json.dumps(asdict(extracted), indent=2)}

@@ -17,7 +17,7 @@ Only record a value that appears VERBATIM in the email. Copy numbers exactly as 
 Set `classification` to exactly one of:
 
 - `quote_received` — the email is FROM the supplier providing a quote (prices, lead times, line items, terms).
-- `supplier_followup` — the email is FROM the supplier following up on or checking in about a previously submitted quote. Note: a follow-up email often recaps the original pricing and lead times in the body — extract any quote data that is present, even if the email's primary purpose is to check in.
+- `supplier_reminder` — the email is FROM the supplier following up on or checking in about a previously submitted quote. Note: a follow-up email often recaps the original pricing and lead times in the body — extract any quote data that is present, even if the email's primary purpose is to check in.
 - `ignore` — not actionable. Use this for: promotions, spam, unrelated mail, AND any email that is FROM the buyer or buyer's agent (requesting information, chasing missing fields, asking the supplier to confirm details). The key rule: if the email is REQUESTING data rather than PROVIDING it, classify as `ignore`.
 
 ## Fields

@@ -24,7 +24,7 @@
   },
   {
     "email_file": "data/sample_emails/03_supplier_followup.eml",
-    "expected_classification": "supplier_followup",
+    "expected_classification": "supplier_reminder",
     "expected_price_breaks": true,
     "expected_production_lead_time": true,
     "expected_long_lead_time_parts": false,
@@ -62,7 +62,10 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Thread 1 (off-shelf, XXX-1001): Buyer's outbound RFQ email. No supplier quote data present. Should be classified as ignore \u2014 tests that the agent does not misinterpret buyer-side emails as quotes."
+    "notes": "Thread 1 (off-shelf, XXX-1001): Buyer's outbound RFQ email. No supplier quote data present. Should be classified as ignore \u2014 tests that the agent does not misinterpret buyer-side emails as quotes.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_01_e1.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e2.eml",
@@ -74,7 +77,11 @@
     "expected_missing_fields": [
       "payment_terms"
     ],
-    "notes": "Thread 1 (off-shelf, XXX-1001): Supplier first reply \u2014 intentionally incomplete. Three price breaks for MFR-AAA-2024 (1000@$1.00, 2000@$0.80, 5000@$0.60). PLT=2 weeks (business days, not flagged as long-lead). Payment terms explicitly deferred \u2014 correctly missing. Agent should follow up on payment_terms only."
+    "notes": "Thread 1 (off-shelf, XXX-1001): Supplier first reply \u2014 intentionally incomplete. Three price breaks for MFR-AAA-2024 (1000@$1.00, 2000@$0.80, 5000@$0.60). PLT=2 weeks (business days, not flagged as long-lead). Payment terms explicitly deferred \u2014 correctly missing. Agent should follow up on payment_terms only.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_01_e1.eml",
+      "data/sample_emails/thread_offshelf_01_e2.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e3.eml",
@@ -84,20 +91,28 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Thread 1 (off-shelf): Agent-generated followup email FROM the buyer, TO the supplier, chasing payment terms and quote validity. Must be classified as ignore \u2014 it is requesting information, not providing it. This was a known bug (misclassified as supplier_followup) fixed by adding BUYER_REQUEST_HINTS to extractor.py and clarifying the AI prompt."
+    "notes": "Thread 1 (off-shelf): Agent-generated followup email FROM the buyer, TO the supplier, chasing payment terms and quote validity. Must be classified as ignore \u2014 it is requesting information, not providing it. This was a known bug (misclassified as supplier_reminder) fixed by adding BUYER_REQUEST_HINTS to extractor.py and clarifying the AI prompt.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_01_e1.eml",
+      "data/sample_emails/thread_offshelf_01_e2.eml",
+      "data/sample_emails/thread_offshelf_01_e3.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e4.eml",
-    "expected_classification": "supplier_followup",
-    "expected_price_breaks": false,
-    "expected_production_lead_time": false,
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": true,
-    "expected_missing_fields": [
-      "unit_price",
-      "production_lead_time"
-    ],
-    "notes": "Thread 1 (off-shelf, XXX-1001): Supplier completion email adding Net 30 payment terms and 30-day validity. Prices and lead time not restated in this email \u2014 correctly missing in single-email extraction. Full picture requires merging with e2 across rounds. Tests supplier_followup classification for quote-completion emails."
+    "expected_missing_fields": [],
+    "notes": "Thread 1 (off-shelf, XXX-1001): Supplier adds Net 30 payment terms, references prior quote. With full thread context (e1-e4), prices and PLT from e2 are visible in combined text. Classified as quote_received; all fields present; missing_fields empty.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_01_e1.eml",
+      "data/sample_emails/thread_offshelf_01_e2.eml",
+      "data/sample_emails/thread_offshelf_01_e3.eml",
+      "data/sample_emails/thread_offshelf_01_e4.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e1.eml",
@@ -107,7 +122,10 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Thread 2 (PCB assembly, A1-PCB-001): Buyer's outbound RFQ requesting both Quick Turn and Standard Turn pricing. No supplier quote data. Should be classified as ignore."
+    "notes": "Thread 2 (PCB assembly, A1-PCB-001): Buyer's outbound RFQ requesting both Quick Turn and Standard Turn pricing. No supplier quote data. Should be classified as ignore.",
+    "thread_emails": [
+      "data/sample_emails/thread_pcb_01_e1.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e2.eml",
@@ -117,7 +135,11 @@
     "expected_long_lead_time_parts": true,
     "expected_payment_terms": true,
     "expected_missing_fields": [],
-    "notes": "Thread 2 (PCB assembly, A1-PCB-001): Complex quote with 6 price breaks across Quick Turn and Standard Turn (100@$12, 250@$10, 500@$7, 100@$8, 250@$7, 500@$5). PLT=12 weeks (longest stated). Long-lead part XXX-LLP flagged at 12wks. Payment=50% deposit. NRE is TBD so null \u2014 NRE is not a required tracked field so missing_fields is empty."
+    "notes": "Thread 2 (PCB assembly, A1-PCB-001): Complex quote with 6 price breaks across Quick Turn and Standard Turn (100@$12, 250@$10, 500@$7, 100@$8, 250@$7, 500@$5). PLT=12 weeks (longest stated). Long-lead part XXX-LLP flagged at 12wks. Payment=50% deposit. NRE is TBD so null \u2014 NRE is not a required tracked field so missing_fields is empty.",
+    "thread_emails": [
+      "data/sample_emails/thread_pcb_01_e1.eml",
+      "data/sample_emails/thread_pcb_01_e2.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e3.eml",
@@ -127,21 +149,28 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Thread 2 (PCB assembly): Agent-generated followup email FROM the buyer, chasing NRE and flagging the spot buy decision to the buyer. Contains [FLAG FOR BUYER] marker. Must be classified as ignore \u2014 it is requesting information and routing a decision, not providing quote data."
+    "notes": "Thread 2 (PCB assembly): Agent-generated followup email FROM the buyer, chasing NRE and flagging the spot buy decision to the buyer. Contains [FLAG FOR BUYER] marker. Must be classified as ignore \u2014 it is requesting information and routing a decision, not providing quote data.",
+    "thread_emails": [
+      "data/sample_emails/thread_pcb_01_e1.eml",
+      "data/sample_emails/thread_pcb_01_e2.eml",
+      "data/sample_emails/thread_pcb_01_e3.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e4.eml",
-    "expected_classification": "supplier_followup",
-    "expected_price_breaks": false,
-    "expected_production_lead_time": false,
-    "expected_long_lead_time_parts": false,
-    "expected_payment_terms": false,
-    "expected_missing_fields": [
-      "unit_price",
-      "production_lead_time",
-      "payment_terms"
-    ],
-    "notes": "Thread 2 (PCB assembly, A1-PCB-001): Supplier NRE completion email \u2014 confirms $500 one-time NRE. No pricing, lead time, or payment terms restated in this email. Full picture requires merging with e2. Tests that NRE-only emails are handled correctly without hallucinating other fields."
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": true,
+    "expected_payment_terms": true,
+    "expected_missing_fields": [],
+    "notes": "Thread 2 (PCB assembly, A1-PCB-001): Supplier confirms NRE = $500, references prior quote. With full thread context (e1-e4), prices, PLT, long-lead parts, and payment from e2 are visible. Classified as quote_received; all fields present; missing_fields empty.",
+    "thread_emails": [
+      "data/sample_emails/thread_pcb_01_e1.eml",
+      "data/sample_emails/thread_pcb_01_e2.eml",
+      "data/sample_emails/thread_pcb_01_e3.eml",
+      "data/sample_emails/thread_pcb_01_e4.eml"
+    ]
   },
   {
     "email_file": "data/sample_emails/06_boxqty_adjusted.eml",

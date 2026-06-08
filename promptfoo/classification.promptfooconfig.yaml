@@ -4,18 +4,18 @@ prompts:
   - "{{email_file}}"
 
 providers:
-  - id: file://promptfoo/classification.py
+  - id: file://classification.py
     label: classification-router
     config:
       pythonExecutable: python3
 
-tests: file://promptfoo/classification.py:load_tests
+tests: file://classification.py:load_tests
 
 defaultTest:
   assert:
     - type: python
-      value: file://promptfoo/classification.py:check_classification
+      value: file://classification.py:check_classification
     - type: python
-      value: file://promptfoo/classification.py:check_quote_signals
+      value: file://classification.py:check_quote_signals
     - type: python
-      value: file://promptfoo/classification.py:check_missing_fields
+      value: file://classification.py:check_missing_fields

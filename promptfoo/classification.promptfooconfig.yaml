@@ -1,0 +1,21 @@
+description: ForgeFlow classification router agent
+
+prompts:
+  - "{{email_file}}"
+
+providers:
+  - id: file://promptfoo/classification.py
+    label: classification-router
+    config:
+      pythonExecutable: python3
+
+tests: file://promptfoo/classification.py:load_tests
+
+defaultTest:
+  assert:
+    - type: python
+      value: file://promptfoo/classification.py:check_classification
+    - type: python
+      value: file://promptfoo/classification.py:check_quote_signals
+    - type: python
+      value: file://promptfoo/classification.py:check_missing_fields

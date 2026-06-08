@@ -10,14 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.69",
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
 ]
 
 # Eval tooling is Promptfoo (Node CLI): `npx promptfoo@latest eval` / `view`.
-
-[project.scripts]
-forgeflow = "forgeflow.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

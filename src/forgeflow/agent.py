@@ -1,35 +1,23 @@
-"""LLM-based extraction via the Claude API.
-
-Drop-in replacement for `extractor.extract_case` — same signature, same
-`ExtractedCase` contract — so the engine, eval, and metrics are unchanged.
-Header-derived fields (supplier name/email) and the derived fields
-(missing_fields, summary) reuse the deterministic helpers; the model only does
-the hard part: reading messy email content into structured fields.
-"""
+"""Classification router agent for RFQ email threads."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 import anthropic
 
-from forgeflow.extractor import (
-    ExtractedCase,
-    _QUOTE_COMPLETION_HINTS,
-    _build_summary,
-    _derive_missing_fields,
-    _detect_supplier_question,
-    _parse_sender,
-)
 from forgeflow.models import EmailMessage
 
+Classification = Literal["quote_received", "supplier_reminder", "ignore"]
 MODEL = "claude-opus-4-7"
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
-_EXTRACTION_TOOL = {
-    "name": "record_quote",
-    "description": "Record the structured fields extracted from a supplier quote email.",
+_CLASSIFICATION_TOOL = {
+    "name": "classify_email",
+    "description": "Classify an RFQ email thread and identify quote-completeness signals.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -37,50 +25,82 @@ _EXTRACTION_TOOL = {
                 "type": "string",
                 "enum": ["quote_received", "supplier_reminder", "ignore"],
             },
-            "price_breaks": {
+            "has_price_breaks": {"type": "boolean"},
+            "has_production_lead_time": {"type": "boolean"},
+            "has_long_lead_time_parts": {"type": "boolean"},
+            "has_payment_terms": {"type": "boolean"},
+            "missing_fields": {
                 "type": "array",
-                "items": {"type": "string"},
-                "description": "One per priced line item, as 'PARTNUM: QTY@$UNITPRICE' (e.g. 'ET-PCBA-MAIN-V2: 500@$18.50'). Omit part number if not stated.",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "production_lead_time",
+                        "payment_terms",
+                        "buyer_input_required",
+                    ],
+                },
             },
-            "production_lead_time": {"type": ["string", "null"]},
-            "long_lead_time_parts": {"type": "array", "items": {"type": "string"}},
-            "moq": {"type": ["string", "null"]},
-            "payment_terms": {"type": ["string", "null"]},
-            "nre": {"type": ["string", "null"]},
-            "coo": {"type": ["string", "null"]},
         },
         "required": [
             "classification",
-            "price_breaks",
-            "production_lead_time",
-            "long_lead_time_parts",
-            "moq",
-            "payment_terms",
-            "nre",
-            "coo",
+            "has_price_breaks",
+            "has_production_lead_time",
+            "has_long_lead_time_parts",
+            "has_payment_terms",
+            "missing_fields",
         ],
     },
 }
 
 
+@dataclass(slots=True)
+class ClassificationResult:
+    classification: Classification
+    has_price_breaks: bool
+    has_production_lead_time: bool
+    has_long_lead_time_parts: bool
+    has_payment_terms: bool
+    missing_fields: list[str]
+
+
 @lru_cache(maxsize=1)
 def _client() -> anthropic.Anthropic:
-    return anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+    return anthropic.Anthropic()
 
 
 @lru_cache(maxsize=1)
 def _system_prompt() -> str:
-    return (_PROMPTS_DIR / "extraction_system.md").read_text(encoding="utf-8")
+    return (_PROMPTS_DIR / "classification_router.txt").read_text(encoding="utf-8")
 
 
-def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
-    latest = messages[-1]
-    combined_text = "\n".join(m.body_text for m in messages if m.body_text)
-    email_text = f"Subject: {latest.subject}\nFrom: {latest.sender}\n\n{combined_text}"
+def _format_thread(messages: list[EmailMessage]) -> str:
+    parts: list[str] = []
+    for idx, message in enumerate(messages, start=1):
+        tag = "latest_email" if idx == len(messages) else "thread_context_email"
+        index_attr = f' index="{idx}"' if tag == "thread_context_email" else ""
+        parts.append(
+            "\n".join(
+                [
+                    f"<{tag}{index_attr}>",
+                    f"Subject: {message.subject}",
+                    f"From: {message.sender}",
+                    f"To: {message.recipients}",
+                    "Body:",
+                    message.body_text or "",
+                    f"</{tag}>",
+                ]
+            )
+        )
+    return "\n\n".join(parts)
+
+
+def classify_thread(messages: list[EmailMessage]) -> ClassificationResult:
+    if not messages:
+        raise ValueError("Cannot classify an empty email thread")
 
     response = _client().messages.create(
         model=MODEL,
-        max_tokens=2048,
+        max_tokens=512,
         system=[
             {
                 "type": "text",
@@ -88,52 +108,16 @@ def extract_case(messages: list[EmailMessage]) -> ExtractedCase:
                 "cache_control": {"type": "ephemeral"},
             }
         ],
-        tools=[_EXTRACTION_TOOL],
-        tool_choice={"type": "tool", "name": "record_quote"},
-        messages=[{"role": "user", "content": email_text}],
+        tools=[_CLASSIFICATION_TOOL],
+        tool_choice={"type": "tool", "name": "classify_email"},
+        messages=[{"role": "user", "content": _format_thread(messages)}],
     )
-
     data = next(block.input for block in response.content if block.type == "tool_use")
-
-    supplier_name, supplier_email = _parse_sender(latest.sender)
-    classification = data["classification"]
-    price_breaks = data.get("price_breaks") or []
-    production_lead_time = data.get("production_lead_time")
-    long_lead_time_parts = data.get("long_lead_time_parts") or []
-    payment_terms = data.get("payment_terms")
-    supplier_pending_question = _detect_supplier_question(combined_text)
-    missing_fields = _derive_missing_fields(
-        classification, price_breaks, production_lead_time, payment_terms
-    )
-    if any(hint in combined_text.lower() for hint in _QUOTE_COMPLETION_HINTS) and missing_fields:
-        missing_fields = []
-    if supplier_pending_question and missing_fields:
-        missing_fields = ["buyer_input_required"]
-    summary = _build_summary(
-        classification,
-        supplier_name,
-        price_breaks,
-        production_lead_time,
-        long_lead_time_parts,
-        data.get("moq"),
-        payment_terms,
-        data.get("nre"),
-        data.get("coo"),
-        missing_fields,
-        supplier_pending_question,
-    )
-    return ExtractedCase(
-        classification=classification,
-        supplier_name=supplier_name,
-        supplier_email=supplier_email,
-        price_breaks=price_breaks,
-        production_lead_time=production_lead_time,
-        long_lead_time_parts=long_lead_time_parts,
-        moq=data.get("moq"),
-        payment_terms=payment_terms,
-        nre=data.get("nre"),
-        coo=data.get("coo"),
-        missing_fields=missing_fields,
-        supplier_pending_question=supplier_pending_question,
-        summary=summary,
+    return ClassificationResult(
+        classification=data["classification"],
+        has_price_breaks=data["has_price_breaks"],
+        has_production_lead_time=data["has_production_lead_time"],
+        has_long_lead_time_parts=data["has_long_lead_time_parts"],
+        has_payment_terms=data["has_payment_terms"],
+        missing_fields=data["missing_fields"],
     )

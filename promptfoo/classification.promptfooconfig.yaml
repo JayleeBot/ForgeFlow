@@ -7,7 +7,7 @@ providers:
   - id: file://classification.py
     label: classification-router
     config:
-      pythonExecutable: python3
+      pythonExecutable: /opt/homebrew/bin/python3.11
 
 tests: file://classification.py:load_tests
 

@@ -206,5 +206,120 @@
     ],
     "expected_supplier_pending_question": true,
     "notes": "Edge Case 2 (supplier blocking question): Supplier provided unit prices (100@$45.00, 500@$38.00) and PLT but is asking buyer to confirm mold tooling grade before they can finalize NRE and payment terms. Agent should NOT chase payment_terms as a missing field; instead missing_fields becomes ['buyer_input_required'] and the summary flags buyer: 'Supplier is waiting for your input... Question: Could you confirm what grade of mold tooling you require...'"
+  },
+  {
+    "email_file": "data/sample_emails/thread_reminder_quote_e1.eml",
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": [],
+    "notes": "Thread 3 (reminder with quote, TIP-20X30-1.5W): Supplier's original complete quote. Three price breaks (1000@$0.38, 5000@$0.31, 10000@$0.26), PLT=10 business days, payment=T/T 30/70. Establishes thread context for e2.",
+    "thread_emails": [
+      "data/sample_emails/thread_reminder_quote_e1.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/thread_reminder_quote_e2.eml",
+    "expected_classification": "supplier_reminder",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": [],
+    "notes": "Thread 3 (reminder with quote, TIP-20X30-1.5W): Supplier follows up one week later recapping prices and asking if buyer has reviewed. Primary intent is follow-up, not new quote data. Must be classified as supplier_reminder even though prices are restated. Quote signals are true because the thread text (e1+e2) contains all commercial data.",
+    "thread_emails": [
+      "data/sample_emails/thread_reminder_quote_e1.eml",
+      "data/sample_emails/thread_reminder_quote_e2.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/10_buyer_rfq_standalone.eml",
+    "expected_classification": "ignore",
+    "expected_price_breaks": false,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": [],
+    "notes": "Standalone buyer RFQ for Ethernet Transformer H1102NL. Buyer is requesting pricing — direction is buyer-to-supplier. Must be classified as ignore. Tests the most basic ignore case without thread context. Mentions price and lead time but from the buyer's perspective as requirements, not supplier data."
+  },
+  {
+    "email_file": "data/sample_emails/11_payment_terms_tbd.eml",
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": [
+      "payment_terms"
+    ],
+    "notes": "Supplier provides complete pricing (500@$4.20, 1000@$3.85, 3000@$3.50) and PLT (14 business days) for LED Driver LDD-700L, but payment terms are explicitly 'TBD — to be confirmed'. Tests that TBD payment terms are not counted as has_payment_terms, and that payment_terms appears in missing_fields."
+  },
+  {
+    "email_file": "data/sample_emails/thread_complete_quote_e1.eml",
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": [
+      "payment_terms"
+    ],
+    "notes": "Thread 4 (complete quote, IDC-20P-2.54MM): Supplier's first reply with prices (2000@$0.18, 5000@$0.14, 20000@$0.10) and PLT (7 business days) but payment terms deferred ('to be confirmed'). Sets up e2 where supplier completes the missing field.",
+    "thread_emails": [
+      "data/sample_emails/thread_complete_quote_e1.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/thread_complete_quote_e2.eml",
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": [],
+    "notes": "Thread 4 (complete quote, IDC-20P-2.54MM): Supplier's follow-up providing the missing payment terms (Net 30). The email itself contains only payment terms; prices and PLT are visible from e1 in the thread. Tests the 'completes a quote with missing commercial details' rule — must be classified as quote_received, not supplier_reminder.",
+    "thread_emails": [
+      "data/sample_emails/thread_complete_quote_e1.eml",
+      "data/sample_emails/thread_complete_quote_e2.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/13_buyer_followup_asking_price.eml",
+    "expected_classification": "ignore",
+    "expected_price_breaks": false,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": [],
+    "notes": "Buyer follow-up chasing a supplier who has not responded to an RFQ for SMA-JACK-PCB. Email explicitly mentions price, lead time, MOQ, COO, and payment terms — but as requested fields, not provided data. Tests that direction matters: buyer asking for quote data must be classified as ignore, not quote_received."
+  },
+  {
+    "email_file": "data/sample_emails/thread_revised_quote_e1.eml",
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": [],
+    "notes": "Thread 5 (revised quote, PM-DC-12V5A-IND): Supplier's original complete quote. Three price breaks (100@$28.50, 500@$24.00, 1000@$21.00), PLT=18 business days, payment=T/T 30/70. Establishes baseline for e2 where supplier revises pricing upward.",
+    "thread_emails": [
+      "data/sample_emails/thread_revised_quote_e1.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/thread_revised_quote_e2.eml",
+    "expected_classification": "quote_received",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": [],
+    "notes": "Thread 5 (revised quote, PM-DC-12V5A-IND): Supplier proactively revises pricing upward (100@$31.00, 500@$26.50, 1000@$23.00) due to material cost increases. Buyer has not responded to e1. Must be classified as quote_received — supplier is providing updated commercial data, not just checking in. Tests that a price revision without buyer response is not misclassified as supplier_reminder.",
+    "thread_emails": [
+      "data/sample_emails/thread_revised_quote_e1.eml",
+      "data/sample_emails/thread_revised_quote_e2.eml"
+    ]
   }
 ]

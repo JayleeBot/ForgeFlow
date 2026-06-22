@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+## 0. Read Product Context First
+Before making any changes, read README.md and docs/ to understand what ForgeFlow is building.
+
+**Never read `src/forgeflow_backup/`, `*_backup` files, or worktree backup copies to understand the codebase — they are stale and misleading. The active code lives under `src/forgeflow/`.**
+
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.

@@ -1,4 +1,4 @@
-description: ForgeFlow classification router agent
+description: ForgeFlow RFQ processing agent
 
 prompts:
   - "{{email_file}}"
@@ -17,5 +17,7 @@ defaultTest:
       value: file://classification.py:check_classification
     - type: python
       value: file://classification.py:check_quote_signals
+    - type: python
+      value: file://classification.py:check_part_numbers
     - type: python
       value: file://classification.py:check_missing_fields

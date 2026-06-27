@@ -429,7 +429,7 @@ def _collection_form(
 ) -> dict[str, Any] | None:
     if not result:
         return None
-    if result.get("rfq_requirements"):
+    if result.get("rfq_requirements") and not result.get("supplier_quote"):
         requirements = result["rfq_requirements"]
         return {
             "type": "rfq_requirements",
@@ -451,11 +451,11 @@ def _collection_form(
     return {
         "type": "supplier_quote_collection",
         "schema_source": schema_source,
-        "status": "complete" if _quote_complete(quote) else "needs_followup",
+        "status": "complete" if _quote_complete(quote, rfq_requirements) else "needs_followup",
         "quantities_requested": (rfq_requirements or {}).get("quantities_requested", []),
         "fields": fields,
         "price_breaks": quote.get("price_breaks", []),
-        "missing_items": _missing_items(quote),
+        "missing_items": _missing_items(quote, rfq_requirements),
         "flags": {
             "blocking_question": quote.get("blocking_question"),
             "long_lead_time_parts": quote.get("long_lead_time_parts", []),
@@ -601,18 +601,55 @@ def _lead_time_value(quote: dict[str, Any]) -> str | None:
     return ", ".join(unique)
 
 
-def _quote_complete(quote: dict[str, Any]) -> bool:
+def _quote_complete(quote: dict[str, Any], rfq_requirements: dict[str, Any] | None = None) -> bool:
     missing_fields = quote.get("missing_fields", {})
     return (
         not quote.get("blocking_question")
         and not missing_fields.get("quote_level")
         and not missing_fields.get("per_part")
+        and not _missing_required_items(quote, rfq_requirements)
     )
 
 
-def _missing_items(quote: dict[str, Any]) -> list[str]:
+def _missing_items(quote: dict[str, Any], rfq_requirements: dict[str, Any] | None = None) -> list[str]:
     missing_fields = quote.get("missing_fields", {})
-    items = list(missing_fields.get("quote_level", []))
+    items = list(_missing_required_items(quote, rfq_requirements))
+    for item in missing_fields.get("quote_level", []):
+        if item not in items:
+            items.append(item)
     for part in missing_fields.get("per_part", []):
-        items.append(f"{part.get('part_number')}: {', '.join(part.get('missing', []))}")
+        item = f"{part.get('part_number')}: {', '.join(part.get('missing', []))}"
+        if item not in items:
+            items.append(item)
     return items
+
+
+def _missing_required_items(
+    quote: dict[str, Any],
+    rfq_requirements: dict[str, Any] | None,
+) -> list[str]:
+    required = (rfq_requirements or {}).get("required_fields") or _inferred_field_keys(quote)
+    items: list[str] = []
+
+    if "price_breaks" in required and not quote.get("price_breaks"):
+        items.append("price_breaks")
+
+    if "lead_time" in required:
+        for part in quote.get("missing_fields", {}).get("per_part", []):
+            if "lead_time" in part.get("missing", []):
+                items.append(f"{part.get('part_number')}: lead_time")
+        price_breaks = quote.get("price_breaks", [])
+        if price_breaks and not any(row.get("lead_time") for row in price_breaks):
+            items.append("lead_time")
+
+    quote_level_values = {
+        "coo": quote.get("coo"),
+        "payment_terms": quote.get("payment_terms"),
+        "moq": quote.get("moq"),
+        "nre": quote.get("nre"),
+    }
+    for field in ("coo", "payment_terms", "moq", "nre"):
+        if field in required and not quote_level_values[field]:
+            items.append(field)
+
+    return list(dict.fromkeys(items))

@@ -341,6 +341,7 @@ def process_thread(messages: list[EmailMessage]) -> ProcessingResult:
     elif classification in ("supplier_quote", "supplier_reminder"):
         return ProcessingResult(
             classification=classification,
+            rfq_requirements=_extract_rfq_requirements(messages),
             supplier_quote=_extract_supplier_quote(messages),
         )
     else:  # ignore

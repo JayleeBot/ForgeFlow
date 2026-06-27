@@ -283,6 +283,31 @@ select {
   margin: 10px 0;
 }
 
+.playgroundWorkspace {
+  align-items: start;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(430px, 1.15fr) minmax(360px, 0.85fr);
+  margin-top: 10px;
+}
+
+.playgroundWorkspace .threadTimeline {
+  margin: 0;
+}
+
+.playgroundResults {
+  background: #f8fbff;
+  border: 1px solid #c7d2df;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+  padding: 10px;
+}
+
+.playgroundResults h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
 .threadMessage {
   background: #f8fbff;
   border: 1px solid #c7d2df;
@@ -567,7 +592,12 @@ pre {
 
   .fieldGrid,
   .detailColumns,
-  .traceGrid {
+  .traceGrid,
+  .playgroundWorkspace {
     grid-template-columns: 1fr;
+  }
+
+  .playgroundResults {
+    max-height: none;
   }
 }

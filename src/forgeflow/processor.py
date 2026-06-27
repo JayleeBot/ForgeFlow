@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from forgeflow.agent import ProcessingResult, process_thread
+from forgeflow.agent import ProcessingResult, SupplierQuoteData, process_thread
 from forgeflow.models import EmailMessage
 from forgeflow.store import (
     connect,
@@ -41,12 +41,7 @@ def draft_reply(message: EmailMessage, result: ProcessingResult) -> str | None:
     if quote.blocking_question:
         return f"[FLAG FOR BUYER]\n\nSupplier needs input before ForgeFlow can complete this quote:\n{quote.blocking_question}"
 
-    missing: list[str] = []
-    for part in quote.missing_fields.per_part:
-        fields = ", ".join(part.missing)
-        missing.append(f"- {part.part_number}: {fields}")
-    for field in quote.missing_fields.quote_level:
-        missing.append(f"- {field}")
+    missing = _missing_required_items(quote, result)
     if not missing:
         return None
 
@@ -61,3 +56,34 @@ def draft_reply(message: EmailMessage, result: ProcessingResult) -> str | None:
         "Best,",
         "ForgeFlow",
     ])
+
+
+def _missing_required_items(quote: SupplierQuoteData, result: ProcessingResult) -> list[str]:
+    required = (
+        result.rfq_requirements.required_fields
+        if result.rfq_requirements
+        else ["price_breaks", "lead_time", "payment_terms", "nre"]
+    )
+    missing: list[str] = []
+
+    if "price_breaks" in required and not quote.price_breaks:
+        missing.append("- price_breaks")
+
+    if "lead_time" in required:
+        for part in quote.missing_fields.per_part:
+            if "lead_time" in part.missing:
+                missing.append(f"- {part.part_number}: lead_time")
+        if quote.price_breaks and not any(row.lead_time for row in quote.price_breaks):
+            missing.append("- lead_time")
+
+    quote_level_values = {
+        "coo": quote.coo,
+        "payment_terms": quote.payment_terms,
+        "moq": quote.moq,
+        "nre": quote.nre,
+    }
+    for field in ("coo", "payment_terms", "moq", "nre"):
+        if field in required and not quote_level_values[field]:
+            missing.append(f"- {field}")
+
+    return list(dict.fromkeys(missing))

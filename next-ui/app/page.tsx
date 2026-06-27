@@ -326,68 +326,73 @@ function PlaygroundTab({
           <div className="manualActions">
             <button disabled={Boolean(action)} onClick={newThread}>New Thread</button>
             <button disabled={Boolean(action)} onClick={addEmail}>Add Reply</button>
+            <button disabled={Boolean(action)} onClick={() => runAction("Running manual thread", async () => {
+              const result = await api<SimulatorRun>("/api/simulator/manual", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ emails: manualEmails })
+              });
+              setSimulatorRun(result);
+            })}>
+              Run Current Thread
+            </button>
           </div>
         </div>
-        <div className="threadTimeline">
-          {manualEmails.map((email, index) => (
-            <article key={index} className="threadMessage">
-              <header>
-                <strong>{index === 0 ? "Buyer RFQ" : `Reply ${index}`}</strong>
-                <button disabled={manualEmails.length === 1 || Boolean(action)} onClick={() => removeEmail(index)}>
-                  Remove
-                </button>
-              </header>
-              <textarea value={email} onChange={(event) => updateEmail(index, event.target.value)} />
-            </article>
-          ))}
+        <div className="playgroundWorkspace">
+          <div className="threadTimeline">
+            {manualEmails.map((email, index) => (
+              <article key={index} className="threadMessage">
+                <header>
+                  <strong>{index === 0 ? "Buyer RFQ" : `Reply ${index}`}</strong>
+                  <button disabled={manualEmails.length === 1 || Boolean(action)} onClick={() => removeEmail(index)}>
+                    Remove
+                  </button>
+                </header>
+                <textarea value={email} onChange={(event) => updateEmail(index, event.target.value)} />
+              </article>
+            ))}
+          </div>
+          <div className="playgroundResults">
+            <h3>Agent Trace</h3>
+            {simulatorRun ? <AgentTrace run={simulatorRun} /> : <p className="muted">Run the current thread to see agent responses and extracted fields.</p>}
+          </div>
         </div>
-        <button disabled={Boolean(action)} onClick={() => runAction("Running manual thread", async () => {
-          const result = await api<SimulatorRun>("/api/simulator/manual", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ emails: manualEmails })
-          });
-          setSimulatorRun(result);
-        })}>
-          Run Current Thread
-        </button>
       </div>
-      {simulatorRun && (
-        <div className="agentTrace">
-          {simulatorRun.steps.map((step, index) => (
-            <div key={`${step.file}-${index}`}>
-              <strong>{index + 1}. {step.agent}</strong>
-              <span>{step.classification}</span>
-              <p>{step.subject}</p>
-              <small>{step.file}</small>
-              <SimulatorStepDetails step={step} />
-              {step.draft_reply && <pre>{step.draft_reply}</pre>}
-            </div>
-          ))}
-        </div>
-      )}
     </section>
   );
 }
 
-function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
-  if (step.result.rfq_requirements) {
-    return (
-      <div className="traceDetails">
-        <h4>RFQ Collection Schema</h4>
-        <div className="traceGrid">
-          <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
-          <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
+function AgentTrace({ run }: { run: SimulatorRun }) {
+  return (
+    <div className="agentTrace">
+      {run.steps.map((step, index) => (
+        <div key={`${step.file}-${index}`}>
+          <strong>{index + 1}. {step.agent}</strong>
+          <span>{step.classification}</span>
+          <p>{step.subject}</p>
+          <small>{step.file}</small>
+          <SimulatorStepDetails step={step} />
+          {step.draft_reply && <pre>{step.draft_reply}</pre>}
         </div>
-        <pre className="jsonBlock">{JSON.stringify(step.result.rfq_requirements, null, 2)}</pre>
-      </div>
-    );
-  }
+      ))}
+    </div>
+  );
+}
 
+function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
   if (step.result.supplier_quote) {
     const quote = step.result.supplier_quote;
     return (
       <div className="traceDetails">
+        {step.result.rfq_requirements && (
+          <section className="detailSection">
+            <h4>RFQ Collection Schema Used</h4>
+            <div className="traceGrid">
+              <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
+              <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
+            </div>
+          </section>
+        )}
         <h4>Supplier Extraction</h4>
         <section className="fieldGrid">
           <Field label="Supplier" value={quote.supplier_name} />
@@ -427,8 +432,8 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
         <section className="detailColumns">
           <div>
             <h4>Missing Items</h4>
-            {missingItems(quote).length ? (
-              <ul>{missingItems(quote).map((item) => <li key={item}>{item}</li>)}</ul>
+            {missingItems(quote, step.result.rfq_requirements).length ? (
+              <ul>{missingItems(quote, step.result.rfq_requirements).map((item) => <li key={item}>{item}</li>)}</ul>
             ) : (
               <p className="statusGoodText">No missing fields.</p>
             )}
@@ -443,6 +448,19 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
             )}
           </div>
         </section>
+      </div>
+    );
+  }
+
+  if (step.result.rfq_requirements) {
+    return (
+      <div className="traceDetails">
+        <h4>RFQ Collection Schema</h4>
+        <div className="traceGrid">
+          <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
+          <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
+        </div>
+        <pre className="jsonBlock">{JSON.stringify(step.result.rfq_requirements, null, 2)}</pre>
       </div>
     );
   }
@@ -747,10 +765,37 @@ function isComplete(quote: SupplierQuote) {
   return missingItems(quote).length === 0 && !quote.blocking_question;
 }
 
-function missingItems(quote: SupplierQuote) {
-  const items = quote.missing_fields.quote_level.map((field) => field);
+function missingItems(quote: SupplierQuote, requirements?: ProcessingResult["rfq_requirements"]) {
+  const required = requirements?.required_fields || [];
+  const items: string[] = [];
+  if (required.includes("price_breaks") && quote.price_breaks.length === 0) {
+    items.push("price_breaks");
+  }
+  if (required.includes("lead_time")) {
+    for (const part of quote.missing_fields.per_part) {
+      if (part.missing.includes("lead_time")) {
+        items.push(`${part.part_number}: lead_time`);
+      }
+    }
+    if (quote.price_breaks.length > 0 && !quote.price_breaks.some((row) => row.lead_time)) {
+      items.push("lead_time");
+    }
+  }
+  for (const field of ["coo", "payment_terms", "moq", "nre"] as const) {
+    if (required.includes(field) && !quote[field]) {
+      items.push(field);
+    }
+  }
+  for (const field of quote.missing_fields.quote_level) {
+    if (!items.includes(field)) {
+      items.push(field);
+    }
+  }
   for (const part of quote.missing_fields.per_part) {
-    items.push(`${part.part_number}: ${part.missing.join(", ")}`);
+    const item = `${part.part_number}: ${part.missing.join(", ")}`;
+    if (!items.includes(item) && (!requirements || part.missing.some((field) => field !== "lead_time"))) {
+      items.push(item);
+    }
   }
   return items;
 }

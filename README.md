@@ -6,66 +6,47 @@ ForgeFlow is a local-first email assistant for **procurement and sourcing teams*
 
 When a buyer sends RFQs to multiple suppliers, the responses come back in unstructured email form — varying formats, missing fields, inconsistent terminology. Reviewing each response manually is time-consuming and error-prone. ForgeFlow automates the triage layer so buyers can focus on decision-making rather than inbox management.
 
-## System architecture
+## Agent Workflow
 
-ForgeFlow is an **LLM agent (Claude)** that rides along on the buyer's own RFQ emails. **The buyer sends each RFQ to suppliers and CCs the agent — that CC is the trigger.** From the CC'd RFQ the agent learns two things at once: *which suppliers* to chase (the recipients) and *which fields this RFQ requires* (the buyer's ask defines them, so RFQ-1 might need `{unit price, MOQ, lead time, COO}` while RFQ-2 needs only `{price, material}`). It then works the thread — following up with each supplier, iterating until that RFQ's required set is satisfied, and aggregating results for the buyer's decision. Because it all happens in a normal email thread the buyer is already on, **the buyer can step in at any time.**
-
-```mermaid
-flowchart TB
-    subgraph THREAD["Email thread (agent is CC'd)"]
-        RFQOUT["Buyer emails RFQ to supplier(s)<br/>CC: agent"]
-        SUP["Supplier replies<br/>price, MOQ, lead time, ..."]
-        STEPIN["Buyer steps into the thread anytime"]
-    end
-    subgraph AGENT["Agent core (Claude)"]
-        REQ["From the CC'd RFQ, derive<br/>supplier list + required fields"]
-        EX["Extract fields from each reply<br/>grounded: verbatim-or-null"]
-        MERGE["Merge into running quote record<br/>fill gaps, detect conflicts"]
-        CHK["Completion check + decision flags<br/>vs this RFQ's required fields"]
-    end
-    subgraph HITL["Human-in-the-loop"]
-        DRAFT["Draft follow-up to supplier<br/>only the missing required fields"]
-        DASH["Buyer reviews / approves / edits"]
-    end
-    NOTIFY(["RFQ ready to review (+ flags)"])
-    DECIDE["Decision dashboard — human decides<br/>compare suppliers + weigh<br/>forecast, cash flow, MOQ trade-offs"]
-
-    RFQOUT --> REQ --> CHK
-    SUP --> EX --> MERGE --> CHK
-    CHK -->|outstanding| DRAFT --> DASH --> SUP
-    CHK -->|satisfied| NOTIFY --> DECIDE
-    STEPIN -. intervene .-> SUP
-```
-
-**Layers**
-
-- **Trigger (CC)** — the buyer emails the RFQ to suppliers and CCs the agent; that single email gives the agent the supplier list *and* this RFQ's required-field set. No inbox-guessing about who or what.
-- **Agent core (Claude)** — extracts fields from each supplier reply with a strict *verbatim-or-null* grounding rule, merges them across rounds, checks completion against this RFQ's required fields, and raises decision flags.
-- **Human-in-the-loop** — the agent drafts follow-ups (only the missing required fields) for the buyer to approve or edit; the buyer can also just reply in the thread directly. Nothing sends without approval.
-- **Decision (human-owned)** — when the required set is satisfied, the buyer is notified and the quotes surface in a **decision dashboard**. The agent compares suppliers (landed cost incl. tariff by COO, lead time, MOQ feasibility) and lays out the trade-offs, but **the human makes the final call** — weighing factors the agent can't see, like demand forecast, cash flow, and sales-team input (e.g. accepting an MOQ of 1,500 for a 1,000-unit need because the price is right).
-
-### How the agent works (per supplier reply)
+ForgeFlow uses three agents. The operating rule is simple: **the buyer's RFQ creates the form, supplier replies fill the form, and the action agent decides what is still needed.**
 
 ```mermaid
 flowchart TD
-    R(["Supplier reply (agent CC'd)"]) --> M["Map to its RFQ thread"]
-    M --> E["Extract fields (grounded)"]
-    E --> U["Merge into the running quote record<br/>fill outstanding, detect conflicts"]
-    U --> K["Evaluate vs RFQ.required_fields<br/>+ run decision flags"]
-    K --> Q{"Supplier has a pending<br/>question for the buyer?"}
-    Q -- Yes --> J["Flag buyer: supplier needs your input<br/>before quote can be completed"]
-    J -. buyer replies to supplier .-> R
-    Q -- No --> D{"Required set<br/>satisfied?"}
-    D -- No --> F["Draft follow-up<br/>only outstanding required fields"]
-    F --> A["Buyer approves in dashboard"]
-    A --> S["Send"]
-    S -. next reply .-> R
-    D -- Yes --> N(["Notify: RFQ ready to review"])
+    A["Incoming email thread"] --> B{"Latest email type"}
+    B -->|"Buyer RFQ"| C["1. RFQ Schema Agent"]
+    C --> D["Persist collection form<br/>required_fields + quantities"]
+    B -->|"Supplier reply"| E["2. Supplier Extraction Agent"]
+    E --> F["Extract quote facts<br/>verbatim-or-null"]
+    D --> G["3. RFQ Action Agent"]
+    F --> G
+    G --> H{"Action"}
+    H -->|"Missing required fields"| I["Draft supplier follow-up"]
+    H -->|"Supplier asks buyer question"| J["Flag buyer"]
+    H -->|"Form complete"| K["Ready for human review"]
+    I --> A
+    J --> A
 ```
 
-The agent's **goal state** is "satisfy this RFQ's required set." That single objective drives the targeted follow-ups, prevents re-asking answered fields, and decides when to stop — all scoped to the individual RFQ. It also flags hidden-cost traps a price-only view misses (e.g. *MOQ 10,000 when you need 100*, or a 52-week lead time on the cheapest quote). The agent gathers and presents the full picture; **the final decision is always the buyer's.**
+**Agent responsibilities**
 
-> **Status:** Claude extraction, the grounded eval (Promptfoo), and human-in-the-loop drafting/send are implemented. The CC trigger, per-RFQ requirement specs, cross-round merge, and the decision dashboard are the in-progress architecture shown above.
+- **RFQ Schema Agent**: reads the buyer's original RFQ and creates the dynamic collection form for that thread. This is the source of truth for required fields.
+- **Supplier Extraction Agent**: reads supplier replies and extracts quote facts from the visible thread. It only extracts what is present.
+- **RFQ Action Agent**: compares the supplier extraction against the persisted collection form, then chooses one action: draft follow-up, flag buyer, or mark ready for review.
+
+**Iteration**
+
+1. Buyer RFQ arrives → create and persist the collection form.
+2. Supplier reply arrives → extract quote facts.
+3. Action agent checks the extraction against the form.
+4. If information is missing, generate a targeted reply asking only for the missing required fields.
+5. When the supplier replies again, repeat extraction and action against the same persisted form.
+6. When all required fields are populated, show the quote as ready for human review in the dashboard.
+
+The corresponding prompts live in:
+
+- `src/forgeflow/prompts/rfq_extraction.txt` — RFQ Schema Agent
+- `src/forgeflow/prompts/quote_extraction.txt` — Supplier Extraction Agent
+- `src/forgeflow/prompts/rfq_action.txt` — RFQ Action Agent
 
 ## What ForgeFlow extracts from supplier quote emails
 

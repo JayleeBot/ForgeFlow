@@ -4,6 +4,7 @@ __pycache__/
 .env
 
 data/forgeflow.db
+data/forgeflow.db-*
 data/outbox/
 logs/
 .deepeval/

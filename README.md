@@ -108,38 +108,52 @@ docs/                  # workflow and setup documentation
 ## Quick start (local mode)
 
 ```bash
-PYTHONPATH=src python3 -m forgeflow.cli init
-PYTHONPATH=src python3 -m forgeflow.cli sync
-PYTHONPATH=src python3 -m forgeflow.cli list-cases
-PYTHONPATH=src python3 -m forgeflow.cli list-drafts
+PYTHONPATH=src python3 -m forgeflow.cli sync-local data/sample_inbox
+PYTHONPATH=src python3 -m forgeflow.cli process
+PYTHONPATH=src python3 -m forgeflow.cli dashboard --port 8000
 ```
 
-Send a draft reply to a supplier:
+The dashboard opens at `http://127.0.0.1:8000` and shows every ingested email, agent classification, extracted result, generated draft, and processing error.
+
+Run the LLM eval cases offline:
 
 ```bash
-PYTHONPATH=src python3 -m forgeflow.cli send <thread_id>
+PYTHONPATH=src python3 -m forgeflow.cli eval
 ```
 
 ## Outlook mode
 
-ForgeFlow connects to a real Outlook mailbox via Microsoft Graph.
+ForgeFlow connects to the Outlook mailbox `forgeflow.demo@outlook.com` via Microsoft Graph.
 
 Required environment variables:
 
 ```bash
 export FORGEFLOW_OUTLOOK_ACCESS_TOKEN="..."
-export FORGEFLOW_OUTLOOK_MAILBOX="quotes@yourcompany.com"
+export FORGEFLOW_OUTLOOK_AUTH_MODE="delegated"
+export FORGEFLOW_OUTLOOK_MAILBOX="me"
 ```
 
-Run with `--provider outlook`:
+For a personal Outlook.com mailbox, first sign in with delegated OAuth:
 
 ```bash
-PYTHONPATH=src python3 -m forgeflow.cli --provider outlook sync
-PYTHONPATH=src python3 -m forgeflow.cli --provider outlook list-cases
-PYTHONPATH=src python3 -m forgeflow.cli --provider outlook list-drafts
+PYTHONPATH=src python3 -m forgeflow.cli login-outlook
 ```
 
-See `docs/microsoft_graph_setup.md` for full setup instructions.
+Pull recent Outlook messages into the local processing log:
+
+```bash
+PYTHONPATH=src python3 -m forgeflow.cli sync-outlook
+PYTHONPATH=src python3 -m forgeflow.cli process
+PYTHONPATH=src python3 -m forgeflow.cli dashboard --port 8000
+```
+
+Run a local poller so new Outlook mail triggers processing:
+
+```bash
+PYTHONPATH=src python3 -m forgeflow.cli watch-outlook --seconds 60
+```
+
+For local testing, click **Sync Outlook** in the dashboard after pasting a fresh Graph token into `FORGEFLOW_OUTLOOK_ACCESS_TOKEN`. Later deployment can replace this polling entrypoint with a Microsoft Graph change notification webhook while keeping the same processor and store contract.
 
 ## How it works
 

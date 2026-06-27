@@ -123,6 +123,31 @@ npm run dev
 
 The dashboard opens at `http://127.0.0.1:3000` and calls the Python API at `http://127.0.0.1:8000`.
 
+### Local RFQ playground
+
+Use the **Playground** tab in the Next.js dashboard to test realistic RFQ back-and-forth without Outlook:
+
+- Start a new manual thread
+- Add the buyer's RFQ as the first message
+- Add supplier replies one at a time
+- Run the current thread after each reply
+- Inspect which agent responded, the RFQ collection schema, extracted quote fields, missing items, flags, and generated follow-up
+
+The playground uses the same parser, agent pipeline, SQLite state tables, and dashboard rendering as real Outlook sync.
+
+You can also run bundled sample scenarios from the Playground tab, or call the simulator API directly:
+
+```bash
+curl -sS http://127.0.0.1:8000/api/simulator/scenarios
+```
+
+Rebuild persisted RFQ state from already-processed interactions:
+
+```bash
+PYTHONPATH=src python3 -m forgeflow.cli rebuild-state
+PYTHONPATH=src python3 -m forgeflow.cli list-rfqs
+```
+
 Run the LLM eval cases offline:
 
 ```bash

@@ -38,6 +38,28 @@ def parse_email_file(path: Path) -> EmailMessage:
     )
 
 
+def parse_email_text(raw_text: str, source_path: str = "manual") -> EmailMessage:
+    raw = raw_text.encode("utf-8")
+    message = BytesParser(policy=policy.default).parsebytes(raw)
+    subject = (message.get("Subject") or "(no subject)").strip()
+    sender = (message.get("From") or "unknown@example.com").strip()
+    recipients = ", ".join(message.get_all("To", []))
+    sent_at = _parse_sent_at(message.get("Date"))
+    body_text = _extract_text_body(message)
+    message_id = (message.get("Message-ID") or _fallback_message_id(raw)).strip()
+    thread_id = _thread_id_from_subject(subject, sender)
+    return EmailMessage(
+        message_id=message_id,
+        thread_id=thread_id,
+        subject=subject,
+        sender=sender,
+        recipients=recipients,
+        sent_at=sent_at,
+        body_text=body_text,
+        source_path=source_path,
+    )
+
+
 def _parse_sent_at(raw_date: str | None) -> datetime:
     if not raw_date:
         return datetime.now().astimezone()

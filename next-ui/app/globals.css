@@ -1,13 +1,15 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7fb;
+  --bg: #eef3f8;
   --panel: #ffffff;
-  --line: #d9dee8;
+  --line: #cbd5e1;
   --text: #172033;
-  --muted: #637083;
+  --muted: #526173;
   --accent: #0f6e69;
   --accent-strong: #0b5753;
   --danger: #b42318;
+  --soft-accent: #e5f4f2;
+  --warning: #92400e;
 }
 
 * {
@@ -18,7 +20,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  font-size: 14px;
 }
 
 main {
@@ -50,6 +53,28 @@ p {
   gap: 10px;
 }
 
+.tabs {
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 8px;
+  padding: 10px 24px 0;
+}
+
+.tabs button {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-color: var(--line);
+  border-bottom: 0;
+  color: var(--muted);
+}
+
+.tabs .activeTab {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 700;
+}
+
 button {
   background: var(--panel);
   border: 1px solid #9aa4b2;
@@ -57,6 +82,7 @@ button {
   color: var(--text);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 700;
   padding: 8px 12px;
 }
 
@@ -77,9 +103,10 @@ button:disabled {
 
 .progressPanel,
 .errorPanel,
+.simulatorPanel,
 .stats,
 .tableWrap {
-  margin: 18px 24px 0;
+  margin: 12px 18px 0;
 }
 
 .progressPanel {
@@ -126,21 +153,177 @@ button:disabled {
   padding: 12px 14px;
 }
 
+.simulatorPanel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+  padding: 12px;
+}
+
+.simulatorPanel h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.simulatorControls {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+select {
+  background: var(--panel);
+  border: 1px solid #9aa4b2;
+  border-radius: 6px;
+  color: var(--text);
+  min-width: 260px;
+  padding: 8px 10px;
+}
+
+.scenarioFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.scenarioFiles span {
+  background: #eef1f6;
+  border: 1px solid #d5dbe6;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.agentTrace {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.agentTrace > div {
+  background: #ffffff;
+  border: 1px solid #b9c6d5;
+  border-left: 4px solid var(--accent);
+  padding: 10px;
+}
+
+.agentTrace strong,
+.agentTrace span,
+.agentTrace small {
+  display: block;
+}
+
+.agentTrace span {
+  background: var(--soft-accent);
+  border: 1px solid #b8d8d5;
+  border-radius: 999px;
+  color: var(--accent-strong);
+  display: inline-block;
+  font-weight: 700;
+  margin-top: 6px;
+  padding: 2px 8px;
+}
+
+.agentTrace small {
+  color: var(--muted);
+  display: block;
+  font-size: 13px;
+  margin-bottom: 6px;
+  margin-top: 6px;
+}
+
+.traceDetails {
+  background: #f8fbff;
+  border: 1px solid #b9c6d5;
+  margin-top: 8px;
+  padding: 10px;
+}
+
+.traceDetails h4 {
+  color: #0f172a;
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.traceGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  margin-bottom: 8px;
+}
+
+.manualPlayground {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.manualHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.manualPlayground h3 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.manualActions {
+  display: flex;
+  gap: 8px;
+}
+
+.threadTimeline {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.threadMessage {
+  background: #f8fbff;
+  border: 1px solid #c7d2df;
+  padding: 10px;
+}
+
+.threadMessage header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+textarea {
+  background: #ffffff;
+  border: 1px solid #c7d2df;
+  border-radius: 6px;
+  color: var(--text);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  min-height: 180px;
+  padding: 8px;
+  resize: vertical;
+  text-transform: none;
+  width: 100%;
+}
+
 .stats {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
 }
 
 .stats div {
   background: var(--panel);
   border: 1px solid var(--line);
-  padding: 12px;
+  padding: 10px;
 }
 
 .stats span {
   display: block;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
 }
 
@@ -159,7 +342,7 @@ table {
 th,
 td {
   border-bottom: 1px solid #e7ebf1;
-  padding: 10px;
+  padding: 8px;
   text-align: left;
   vertical-align: top;
 }
@@ -176,8 +359,12 @@ td {
 }
 
 pre {
-  margin: 0 0 8px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 0 0 10px;
   max-width: 520px;
+  padding: 8px;
   white-space: pre-wrap;
 }
 
@@ -193,6 +380,7 @@ pre {
   background: #e6eaef;
   border-radius: 999px;
   display: inline-block;
+  font-weight: 700;
   padding: 2px 8px;
 }
 
@@ -234,6 +422,7 @@ pre {
   border: 1px solid #c8d8d7;
   border-radius: 999px;
   color: #24413f;
+  font-weight: 700;
   padding: 2px 8px;
 }
 
@@ -280,14 +469,14 @@ pre {
 
 .fieldGrid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
 .field {
   background: var(--panel);
   border: 1px solid var(--line);
-  padding: 10px;
+  padding: 8px;
 }
 
 .field span {
@@ -317,7 +506,7 @@ pre {
 }
 
 .detailSection {
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .detailSection h3,
@@ -337,9 +526,9 @@ pre {
 
 .detailColumns {
   display: grid;
-  gap: 16px;
+  gap: 10px;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
-  margin-top: 18px;
+  margin-top: 12px;
 }
 
 .detailColumns > div {
@@ -365,7 +554,10 @@ pre {
   }
 
   .actions,
-  .progressCopy {
+  .progressCopy,
+  .simulatorControls,
+  .manualHeader,
+  .manualActions {
     flex-direction: column;
   }
 
@@ -374,7 +566,8 @@ pre {
   }
 
   .fieldGrid,
-  .detailColumns {
+  .detailColumns,
+  .traceGrid {
     grid-template-columns: 1fr;
   }
 }

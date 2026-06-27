@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from forgeflow.graph import GraphMailbox
 from forgeflow.processor import ingest_messages, process_pending
+from forgeflow.simulator import list_scenarios, run_manual_thread, run_scenario
 from forgeflow.store import connect, draft_reply_for_message, mark_reply_sent, recent_interactions
 from forgeflow.store import rebuild_state_from_interactions, rfq_states
 
@@ -30,6 +31,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/rfqs":
             with connect() as conn:
                 self._json(rfq_states(conn))
+        elif path == "/api/simulator/scenarios":
+            self._json(list_scenarios())
         elif path == "/api/health":
             self._json({"ok": True})
         else:
@@ -47,6 +50,10 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"rebuilt": rebuild_state_from_interactions(conn)})
             elif path == "/api/send-reply":
                 self._send_reply()
+            elif path == "/api/simulator/run":
+                self._run_simulator()
+            elif path == "/api/simulator/manual":
+                self._run_manual_simulator()
             else:
                 self.send_error(404)
         except Exception as exc:
@@ -76,6 +83,24 @@ class Handler(BaseHTTPRequestHandler):
             GraphMailbox().reply(message_id, draft["draft_reply"])
             mark_reply_sent(conn, message_id)
         self._json({"sent": True})
+
+    def _run_simulator(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        scenario_id = payload.get("scenario_id")
+        if not scenario_id:
+            self._json({"error": "scenario_id is required"}, status=400)
+            return
+        self._json(run_scenario(scenario_id))
+
+    def _run_manual_simulator(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        emails = payload.get("emails")
+        if not isinstance(emails, list):
+            self._json({"error": "emails must be a list of raw email strings"}, status=400)
+            return
+        self._json(run_manual_thread([str(email) for email in emails]))
 
     def _json(self, payload, status: int = 200) -> None:
         data = json.dumps(payload).encode("utf-8")

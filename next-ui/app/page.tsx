@@ -81,10 +81,35 @@ type CollectionForm = {
   };
 };
 
+type Scenario = {
+  id: string;
+  label: string;
+  files: string[];
+};
+
+type SimulatorStep = {
+  file: string;
+  subject: string;
+  agent: string;
+  classification: string;
+  result: ProcessingResult;
+  draft_reply: string | null;
+};
+
+type SimulatorRun = {
+  scenario: string;
+  steps: SimulatorStep[];
+};
+
 const API_BASE = process.env.NEXT_PUBLIC_FORGEFLOW_API_BASE || "http://127.0.0.1:8000";
 
 export default function DashboardPage() {
   const [rows, setRows] = useState<Interaction[]>([]);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState("");
+  const [manualEmails, setManualEmails] = useState<string[]>([defaultEmail(1)]);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "playground">("dashboard");
+  const [simulatorRun, setSimulatorRun] = useState<SimulatorRun | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<ActionState | null>(null);
@@ -110,8 +135,13 @@ export default function DashboardPage() {
   }
 
   async function refresh() {
-    const data = await api<Interaction[]>("/api/interactions");
+    const [data, scenarioData] = await Promise.all([
+      api<Interaction[]>("/api/interactions"),
+      api<Scenario[]>("/api/simulator/scenarios")
+    ]);
     setRows(data);
+    setScenarios(scenarioData);
+    setSelectedScenario((current) => current || scenarioData[0]?.id || "");
   }
 
   async function runAction(label: string, fn: () => Promise<void>) {
@@ -155,6 +185,21 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      <nav className="tabs" aria-label="Dashboard sections">
+        <button
+          className={activeTab === "dashboard" ? "activeTab" : ""}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          RFQ Dashboard
+        </button>
+        <button
+          className={activeTab === "playground" ? "activeTab" : ""}
+          onClick={() => setActiveTab("playground")}
+        >
+          Playground
+        </button>
+      </nav>
+
       {(action || loading) && (
         <section className="progressPanel" aria-live="polite">
           <div className="progressCopy">
@@ -169,6 +214,261 @@ export default function DashboardPage() {
 
       {error && <section className="errorPanel">{error}</section>}
 
+      {activeTab === "playground" ? (
+        <PlaygroundTab
+          action={action}
+          api={api}
+          manualEmails={manualEmails}
+          runAction={runAction}
+          scenarios={scenarios}
+          selectedScenario={selectedScenario}
+          setManualEmails={setManualEmails}
+          setSelectedScenario={setSelectedScenario}
+          setSimulatorRun={setSimulatorRun}
+          simulatorRun={simulatorRun}
+        />
+      ) : (
+        <DashboardTab
+          action={action}
+          expandedId={expandedId}
+          rows={rows}
+          runAction={runAction}
+          setExpandedId={setExpandedId}
+          stats={stats}
+          api={api}
+        />
+      )}
+    </main>
+  );
+}
+
+function PlaygroundTab({
+  action,
+  api,
+  manualEmails,
+  runAction,
+  scenarios,
+  selectedScenario,
+  setManualEmails,
+  setSelectedScenario,
+  setSimulatorRun,
+  simulatorRun
+}: {
+  action: ActionState | null;
+  api: <T>(path: string, options?: RequestInit) => Promise<T>;
+  manualEmails: string[];
+  runAction: (label: string, fn: () => Promise<void>) => Promise<void>;
+  scenarios: Scenario[];
+  selectedScenario: string;
+  setManualEmails: (emails: string[]) => void;
+  setSelectedScenario: (scenario: string) => void;
+  setSimulatorRun: (run: SimulatorRun) => void;
+  simulatorRun: SimulatorRun | null;
+}) {
+  function addEmail() {
+    setManualEmails([...manualEmails, defaultEmail(manualEmails.length + 1)]);
+  }
+
+  function removeEmail(index: number) {
+    setManualEmails(manualEmails.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  function updateEmail(index: number, value: string) {
+    const next = [...manualEmails];
+    next[index] = value;
+    setManualEmails(next);
+  }
+
+  function newThread() {
+    setManualEmails([defaultEmail(1)]);
+    setSimulatorRun({
+      scenario: "manual_playground",
+      steps: []
+    });
+  }
+
+  return (
+    <section className="simulatorPanel">
+      <div>
+        <h2>Local Email Simulator</h2>
+        <p>Inject sample RFQ threads or write your own emails, then inspect which agent responded.</p>
+      </div>
+      <div className="simulatorControls">
+        <select value={selectedScenario} onChange={(event) => setSelectedScenario(event.target.value)}>
+          {scenarios.map((scenario) => (
+            <option key={scenario.id} value={scenario.id}>{scenario.label}</option>
+          ))}
+        </select>
+        <button disabled={Boolean(action) || !selectedScenario} onClick={() => runAction("Running simulator", async () => {
+          const result = await api<SimulatorRun>("/api/simulator/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scenario_id: selectedScenario })
+          });
+          setSimulatorRun(result);
+        })}>
+          Run Scenario
+        </button>
+      </div>
+      {selectedScenario && (
+        <div className="scenarioFiles">
+          {(scenarios.find((scenario) => scenario.id === selectedScenario)?.files || []).map((file) => (
+            <span key={file}>{file}</span>
+          ))}
+        </div>
+      )}
+      <div className="manualPlayground">
+        <div className="manualHeader">
+          <div>
+            <h3>Manual Thread Playground</h3>
+            <p>Build a thread message by message. Add the buyer RFQ, run it, add a supplier reply, run again, and keep going.</p>
+          </div>
+          <div className="manualActions">
+            <button disabled={Boolean(action)} onClick={newThread}>New Thread</button>
+            <button disabled={Boolean(action)} onClick={addEmail}>Add Reply</button>
+          </div>
+        </div>
+        <div className="threadTimeline">
+          {manualEmails.map((email, index) => (
+            <article key={index} className="threadMessage">
+              <header>
+                <strong>{index === 0 ? "Buyer RFQ" : `Reply ${index}`}</strong>
+                <button disabled={manualEmails.length === 1 || Boolean(action)} onClick={() => removeEmail(index)}>
+                  Remove
+                </button>
+              </header>
+              <textarea value={email} onChange={(event) => updateEmail(index, event.target.value)} />
+            </article>
+          ))}
+        </div>
+        <button disabled={Boolean(action)} onClick={() => runAction("Running manual thread", async () => {
+          const result = await api<SimulatorRun>("/api/simulator/manual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ emails: manualEmails })
+          });
+          setSimulatorRun(result);
+        })}>
+          Run Current Thread
+        </button>
+      </div>
+      {simulatorRun && (
+        <div className="agentTrace">
+          {simulatorRun.steps.map((step, index) => (
+            <div key={`${step.file}-${index}`}>
+              <strong>{index + 1}. {step.agent}</strong>
+              <span>{step.classification}</span>
+              <p>{step.subject}</p>
+              <small>{step.file}</small>
+              <SimulatorStepDetails step={step} />
+              {step.draft_reply && <pre>{step.draft_reply}</pre>}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
+  if (step.result.rfq_requirements) {
+    return (
+      <div className="traceDetails">
+        <h4>RFQ Collection Schema</h4>
+        <div className="traceGrid">
+          <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
+          <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
+        </div>
+        <pre className="jsonBlock">{JSON.stringify(step.result.rfq_requirements, null, 2)}</pre>
+      </div>
+    );
+  }
+
+  if (step.result.supplier_quote) {
+    const quote = step.result.supplier_quote;
+    return (
+      <div className="traceDetails">
+        <h4>Supplier Extraction</h4>
+        <section className="fieldGrid">
+          <Field label="Supplier" value={quote.supplier_name} />
+          <Field label="RFQ Ref" value={quote.rfq_reference} />
+          <Field label="Payment Terms" value={quote.payment_terms} />
+          <Field label="MOQ" value={quote.moq} />
+          <Field label="NRE" value={quote.nre} />
+          <Field label="COO" value={quote.coo} />
+        </section>
+        <section className="detailSection">
+          <h4>Price Breaks</h4>
+          {quote.price_breaks.length ? (
+            <table className="innerTable">
+              <thead>
+                <tr>
+                  <th>Part</th>
+                  <th>Qty</th>
+                  <th>Unit Price</th>
+                  <th>Lead Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {quote.price_breaks.map((priceBreak, index) => (
+                  <tr key={`${priceBreak.part_number}-${priceBreak.quantity}-${index}`}>
+                    <td>{priceBreak.part_number}</td>
+                    <td>{priceBreak.quantity}</td>
+                    <td>{priceBreak.unit_price}</td>
+                    <td>{priceBreak.lead_time || <span className="missing">Missing</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="missing">No price breaks extracted.</p>
+          )}
+        </section>
+        <section className="detailColumns">
+          <div>
+            <h4>Missing Items</h4>
+            {missingItems(quote).length ? (
+              <ul>{missingItems(quote).map((item) => <li key={item}>{item}</li>)}</ul>
+            ) : (
+              <p className="statusGoodText">No missing fields.</p>
+            )}
+          </div>
+          <div>
+            <h4>Flags</h4>
+            {quote.blocking_question && <p>{quote.blocking_question}</p>}
+            {quote.long_lead_time_parts.length ? (
+              <ul>{quote.long_lead_time_parts.map((item) => <li key={item}>{item}</li>)}</ul>
+            ) : (
+              <p className="muted">No flags.</p>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  return <p className="muted">No structured payload for this step.</p>;
+}
+
+function DashboardTab({
+  action,
+  api,
+  expandedId,
+  rows,
+  runAction,
+  setExpandedId,
+  stats
+}: {
+  action: ActionState | null;
+  api: <T>(path: string, options?: RequestInit) => Promise<T>;
+  expandedId: string | null;
+  rows: Interaction[];
+  runAction: (label: string, fn: () => Promise<void>) => Promise<void>;
+  setExpandedId: (id: string | null) => void;
+  stats: { total: number; quotes: number; pending: number; drafts: number };
+}) {
+  return (
+    <>
       <section className="stats">
         <div><span>{stats.total}</span>Total</div>
         <div><span>{stats.quotes}</span>Quotes</div>
@@ -198,10 +498,7 @@ export default function DashboardPage() {
                     <td>{formatDate(row.sent_at)}</td>
                     <td>{row.sender}</td>
                     <td>
-                      <button
-                        className="linkButton"
-                        onClick={() => setExpandedId(isExpanded ? null : row.message_id)}
-                      >
+                      <button className="linkButton" onClick={() => setExpandedId(isExpanded ? null : row.message_id)}>
                         {row.subject}
                       </button>
                     </td>
@@ -253,7 +550,7 @@ export default function DashboardPage() {
           </tbody>
         </table>
       </section>
-    </main>
+    </>
   );
 }
 
@@ -466,4 +763,52 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function defaultEmail(index: number) {
+  const date = `Wed, 20 May 2026 10:0${index}:00 -0400`;
+  if (index === 1) {
+    return [
+      "From: Buyer <buyer@example.com>",
+      "To: Supplier <supplier@example.com>",
+      "Cc: forgeflow.demo@outlook.com",
+      "Subject: RFQ - Demo Part #ABC-100",
+      `Date: ${date}`,
+      `Message-ID: <manual-demo-${index}@forgeflow>`,
+      "",
+      "Hi,",
+      "",
+      "Please quote ABC-100 at 100, 250, and 500 pcs.",
+      "Please include unit price, lead time, MOQ, payment terms, COO, and NRE if applicable.",
+      "",
+      "Thanks"
+    ].join("\n");
+  }
+  if (index === 2) {
+    return [
+      "From: Supplier <supplier@example.com>",
+      "To: Buyer <buyer@example.com>",
+      "Cc: forgeflow.demo@outlook.com",
+      "Subject: Re: RFQ - Demo Part #ABC-100",
+      `Date: ${date}`,
+      `Message-ID: <manual-demo-${index}@forgeflow>`,
+      "",
+      "Hi,",
+      "",
+      "For ABC-100, unit price is $2.40 at 100 pcs, $2.10 at 250 pcs, and $1.90 at 500 pcs.",
+      "Lead time is 6 weeks. MOQ is 100 pcs. COO is Mexico.",
+      "",
+      "Best"
+    ].join("\n");
+  }
+  return [
+    "From: Supplier <supplier@example.com>",
+    "To: Buyer <buyer@example.com>",
+    "Cc: forgeflow.demo@outlook.com",
+    "Subject: Re: RFQ - Demo Part #ABC-100",
+    `Date: ${date}`,
+    `Message-ID: <manual-demo-${index}@forgeflow>`,
+    "",
+    "Payment terms are Net 30. No NRE required."
+  ].join("\n");
 }

@@ -52,6 +52,13 @@ class GraphMailbox:
         data = self._get(f"/{mailbox_path}/mailFolders/{folder}/messages?{query}")
         return [_message_from_graph(item) for item in data.get("value", [])]
 
+    def reply(self, message_id: str, body_text: str) -> None:
+        mailbox_path = "me" if self.auth_mode == "delegated" or self.mailbox == "me" else f"users/{urllib.parse.quote(self.mailbox)}"
+        self._post(
+            f"/{mailbox_path}/messages/{urllib.parse.quote(message_id, safe='')}/reply",
+            {"comment": _reply_body(body_text)},
+        )
+
     def _get(self, path: str) -> dict[str, Any]:
         req = urllib.request.Request(
             f"{GRAPH_ROOT}{path}",
@@ -63,6 +70,27 @@ class GraphMailbox:
         try:
             with urllib.request.urlopen(req, timeout=30) as response:
                 return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace").strip()
+            detail = f": {body}" if body else ""
+            raise RuntimeError(f"Microsoft Graph returned HTTP {exc.code}{detail}") from exc
+
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{GRAPH_ROOT}{path}",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                body = response.read().decode("utf-8").strip()
+                return json.loads(body) if body else {}
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace").strip()
             detail = f": {body}" if body else ""
@@ -103,3 +131,10 @@ def _html_to_text(value: str) -> str:
     value = re.sub(r"(?i)<br\s*/?>", "\n", value)
     value = re.sub(r"(?i)</p\s*>", "\n\n", value)
     return unescape(TAG_RE.sub("", value))
+
+
+def _reply_body(value: str) -> str:
+    lines = value.splitlines()
+    if lines and lines[0].lower().startswith("subject:"):
+        lines = lines[1:]
+    return "\n".join(lines).strip()

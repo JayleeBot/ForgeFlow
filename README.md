@@ -113,7 +113,15 @@ PYTHONPATH=src python3 -m forgeflow.cli process
 PYTHONPATH=src python3 -m forgeflow.cli dashboard --port 8000
 ```
 
-The dashboard opens at `http://127.0.0.1:8000` and shows every ingested email, agent classification, extracted result, generated draft, and processing error.
+Start the Next.js dashboard in a second terminal:
+
+```bash
+cd next-ui
+npm install
+npm run dev
+```
+
+The dashboard opens at `http://127.0.0.1:3000` and calls the Python API at `http://127.0.0.1:8000`.
 
 Run the LLM eval cases offline:
 
@@ -147,10 +155,29 @@ PYTHONPATH=src python3 -m forgeflow.cli process
 PYTHONPATH=src python3 -m forgeflow.cli dashboard --port 8000
 ```
 
+Then run the frontend:
+
+```bash
+cd next-ui
+npm run dev
+```
+
 Run a local poller so new Outlook mail triggers processing:
 
 ```bash
 PYTHONPATH=src python3 -m forgeflow.cli watch-outlook --seconds 60
+```
+
+Review generated reply drafts without sending:
+
+```bash
+PYTHONPATH=src python3 -m forgeflow.cli send-replies
+```
+
+Send those replies after review:
+
+```bash
+PYTHONPATH=src python3 -m forgeflow.cli send-replies --yes
 ```
 
 For local testing, click **Sync Outlook** in the dashboard after pasting a fresh Graph token into `FORGEFLOW_OUTLOOK_ACCESS_TOKEN`. Later deployment can replace this polling entrypoint with a Microsoft Graph change notification webhook while keeping the same processor and store contract.

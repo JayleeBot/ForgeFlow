@@ -39,10 +39,14 @@ def init_db(conn: sqlite3.Connection) -> None:
             draft_reply TEXT,
             error TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            processed_at TEXT
+            processed_at TEXT,
+            reply_sent_at TEXT
         )
         """
     )
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(interactions)").fetchall()}
+    if "reply_sent_at" not in columns:
+        conn.execute("ALTER TABLE interactions ADD COLUMN reply_sent_at TEXT")
     conn.commit()
 
 
@@ -140,7 +144,7 @@ def recent_interactions(conn: sqlite3.Connection, limit: int = 100) -> list[dict
     rows = conn.execute(
         """
         SELECT message_id, thread_id, subject, sender, sent_at, source_path,
-               classification, result_json, draft_reply, error, processed_at
+               classification, result_json, draft_reply, error, processed_at, reply_sent_at
         FROM interactions
         ORDER BY sent_at DESC
         LIMIT ?
@@ -148,6 +152,38 @@ def recent_interactions(conn: sqlite3.Connection, limit: int = 100) -> list[dict
         (limit,),
     ).fetchall()
     return [_row_to_dict(row) for row in rows]
+
+
+def unsent_draft_replies(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT message_id, subject, sender, draft_reply
+        FROM interactions
+        WHERE draft_reply IS NOT NULL AND reply_sent_at IS NULL
+        ORDER BY sent_at ASC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def draft_reply_for_message(conn: sqlite3.Connection, message_id: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT message_id, subject, sender, draft_reply, reply_sent_at
+        FROM interactions
+        WHERE message_id = ?
+        """,
+        (message_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def mark_reply_sent(conn: sqlite3.Connection, message_id: str) -> None:
+    conn.execute(
+        "UPDATE interactions SET reply_sent_at = ? WHERE message_id = ?",
+        (datetime.now().astimezone().isoformat(), message_id),
+    )
+    conn.commit()
 
 
 def _row_to_message(row: sqlite3.Row) -> EmailMessage:

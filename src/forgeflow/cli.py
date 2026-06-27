@@ -14,7 +14,7 @@ from forgeflow.graph import GraphMailbox
 from forgeflow.parser import parse_email_file
 from forgeflow.processor import ingest_messages, process_pending
 from forgeflow.server import run_server
-from forgeflow.store import connect, recent_interactions
+from forgeflow.store import connect, mark_reply_sent, recent_interactions, unsent_draft_replies
 
 
 def main() -> None:
@@ -27,6 +27,8 @@ def main() -> None:
     login.add_argument("--tenant", default=os.environ.get("FORGEFLOW_AZURE_TENANT_ID") or "consumers")
     login.add_argument("--client-id", default=os.environ.get("FORGEFLOW_AZURE_CLIENT_ID"))
     sub.add_parser("process")
+    send = sub.add_parser("send-replies")
+    send.add_argument("--yes", action="store_true")
     watch = sub.add_parser("watch-outlook")
     watch.add_argument("--seconds", type=int, default=int(os.environ.get("FORGEFLOW_POLL_SECONDS", "60")))
     sub.add_parser("dashboard").add_argument("--port", type=int, default=8000)
@@ -46,6 +48,8 @@ def main() -> None:
         device_login(args.client_id, args.tenant)
     elif args.cmd == "process":
         print(f"processed={process_pending()}")
+    elif args.cmd == "send-replies":
+        send_replies(args.yes)
     elif args.cmd == "watch-outlook":
         watch_outlook(args.seconds)
     elif args.cmd == "dashboard":
@@ -80,6 +84,23 @@ def watch_outlook(seconds: int) -> None:
         processed = process_pending()
         print(f"ingested={ingested} processed={processed}", flush=True)
         time.sleep(seconds)
+
+
+def send_replies(confirmed: bool) -> None:
+    with connect() as conn:
+        drafts = unsent_draft_replies(conn)
+        if not drafts:
+            print("No unsent draft replies.")
+            return
+        if not confirmed:
+            print(json.dumps(drafts, indent=2))
+            print("Run again with --yes to send these replies.")
+            return
+        mailbox = GraphMailbox()
+        for draft in drafts:
+            mailbox.reply(draft["message_id"], draft["draft_reply"])
+            mark_reply_sent(conn, draft["message_id"])
+            print(f"sent={draft['subject']}")
 
 
 if __name__ == "__main__":

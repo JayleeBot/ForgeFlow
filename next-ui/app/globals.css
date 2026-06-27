@@ -70,6 +70,11 @@ button:disabled {
   opacity: 0.55;
 }
 
+.secondaryButton {
+  display: block;
+  margin-bottom: 8px;
+}
+
 .progressPanel,
 .errorPanel,
 .stats,
@@ -176,6 +181,14 @@ pre {
   white-space: pre-wrap;
 }
 
+.jsonBlock {
+  background: #111827;
+  color: #f9fafb;
+  max-width: none;
+  overflow-x: auto;
+  padding: 12px;
+}
+
 .pill {
   background: #e6eaef;
   border-radius: 999px;
@@ -193,6 +206,158 @@ pre {
   font-weight: 700;
 }
 
+.muted {
+  color: var(--muted);
+}
+
+.linkButton {
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.linkButton:hover {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
+.quoteSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quoteSummary span {
+  background: #eef4f4;
+  border: 1px solid #c8d8d7;
+  border-radius: 999px;
+  color: #24413f;
+  padding: 2px 8px;
+}
+
+.detailsCell {
+  background: #fbfcfe;
+  padding: 0;
+}
+
+.detailsPanel {
+  border-top: 1px solid var(--line);
+  padding: 18px;
+}
+
+.detailsHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.detailsHeader h2 {
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.statusGood,
+.statusNeedsWork {
+  border-radius: 999px;
+  font-weight: 700;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.statusGood {
+  background: #dff7eb;
+  color: #047857;
+}
+
+.statusNeedsWork {
+  background: #fff1d6;
+  color: #92400e;
+}
+
+.fieldGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.field {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+.field span {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.field strong {
+  display: block;
+  font-size: 14px;
+}
+
+.field em {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  font-style: normal;
+  margin-top: 4px;
+}
+
+.fieldMissing strong,
+.missing {
+  color: var(--danger);
+}
+
+.detailSection {
+  margin-top: 18px;
+}
+
+.detailSection h3,
+.detailColumns h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.innerTable {
+  min-width: 0;
+}
+
+.innerTable th,
+.innerTable td {
+  font-size: 13px;
+}
+
+.detailColumns {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  margin-top: 18px;
+}
+
+.detailColumns > div {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 12px;
+}
+
+.detailColumns ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.statusGoodText {
+  color: #047857;
+  margin: 0;
+}
+
 @media (max-width: 720px) {
   .topbar {
     align-items: stretch;
@@ -206,5 +371,10 @@ pre {
 
   .stats {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .fieldGrid,
+  .detailColumns {
+    grid-template-columns: 1fr;
   }
 }

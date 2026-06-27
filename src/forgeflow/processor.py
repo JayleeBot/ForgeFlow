@@ -6,6 +6,7 @@ from forgeflow.store import (
     connect,
     mark_error,
     mark_processed,
+    persist_processing_state,
     save_email,
     thread_messages_through,
     unprocessed_messages,
@@ -24,7 +25,9 @@ def process_pending() -> int:
             try:
                 context = thread_messages_through(conn, message.thread_id, message.sent_at)
                 result = process_thread(context)
-                mark_processed(conn, message.message_id, result, draft_reply(message, result))
+                draft = draft_reply(message, result)
+                mark_processed(conn, message.message_id, result, draft)
+                persist_processing_state(conn, message, result, draft)
                 processed += 1
             except Exception as exc:  # dashboard should show failures instead of hiding them
                 mark_error(conn, message.message_id, f"{type(exc).__name__}: {exc}")

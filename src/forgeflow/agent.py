@@ -1,4 +1,4 @@
-"""RFQ email processing agent: classification + targeted extraction."""
+"""Three-agent RFQ processing: schema, supplier extraction, and action state."""
 
 from __future__ import annotations
 
@@ -269,7 +269,7 @@ def _classify(messages: list[EmailMessage]) -> str:
     return data["classification"]
 
 
-# ── Step 2a: RFQ requirements extraction ──────────────────────────────────────
+# ── Agent 1: RFQ Schema Agent ─────────────────────────────────────────────────
 
 def _extract_rfq_requirements(messages: list[EmailMessage]) -> RFQRequirements:
     response = _client().messages.create(
@@ -287,7 +287,7 @@ def _extract_rfq_requirements(messages: list[EmailMessage]) -> RFQRequirements:
     )
 
 
-# ── Step 2b: Supplier quote extraction ────────────────────────────────────────
+# ── Agent 2: Supplier Extraction Agent ────────────────────────────────────────
 
 def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
     response = _client().messages.create(
@@ -325,7 +325,7 @@ def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
     )
 
 
-# ── Main entry point ───────────────────────────────────────────────────────────
+# ── Router entry point ─────────────────────────────────────────────────────────
 
 def process_thread(messages: list[EmailMessage]) -> ProcessingResult:
     if not messages:

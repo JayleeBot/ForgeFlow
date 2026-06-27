@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from forgeflow.graph import GraphMailbox
 from forgeflow.processor import ingest_messages, process_pending
 from forgeflow.store import connect, draft_reply_for_message, mark_reply_sent, recent_interactions
+from forgeflow.store import rebuild_state_from_interactions, rfq_states
 
 
 def run_server(host: str = "127.0.0.1", port: int = 8000) -> None:
@@ -26,6 +27,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/interactions":
             with connect() as conn:
                 self._json(recent_interactions(conn))
+        elif path == "/api/rfqs":
+            with connect() as conn:
+                self._json(rfq_states(conn))
         elif path == "/api/health":
             self._json({"ok": True})
         else:
@@ -38,6 +42,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ingested": ingest_messages(GraphMailbox().fetch_recent())})
             elif path == "/api/process":
                 self._json({"processed": process_pending()})
+            elif path == "/api/rebuild-state":
+                with connect() as conn:
+                    self._json({"rebuilt": rebuild_state_from_interactions(conn)})
             elif path == "/api/send-reply":
                 self._send_reply()
             else:

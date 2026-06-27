@@ -15,6 +15,7 @@ from forgeflow.parser import parse_email_file
 from forgeflow.processor import ingest_messages, process_pending
 from forgeflow.server import run_server
 from forgeflow.store import connect, mark_reply_sent, recent_interactions, unsent_draft_replies
+from forgeflow.store import rebuild_state_from_interactions, rfq_states
 
 
 def main() -> None:
@@ -27,6 +28,8 @@ def main() -> None:
     login.add_argument("--tenant", default=os.environ.get("FORGEFLOW_AZURE_TENANT_ID") or "consumers")
     login.add_argument("--client-id", default=os.environ.get("FORGEFLOW_AZURE_CLIENT_ID"))
     sub.add_parser("process")
+    sub.add_parser("rebuild-state")
+    sub.add_parser("list-rfqs")
     send = sub.add_parser("send-replies")
     send.add_argument("--yes", action="store_true")
     watch = sub.add_parser("watch-outlook")
@@ -48,6 +51,12 @@ def main() -> None:
         device_login(args.client_id, args.tenant)
     elif args.cmd == "process":
         print(f"processed={process_pending()}")
+    elif args.cmd == "rebuild-state":
+        with connect() as conn:
+            print(f"rebuilt={rebuild_state_from_interactions(conn)}")
+    elif args.cmd == "list-rfqs":
+        with connect() as conn:
+            print(json.dumps(rfq_states(conn), indent=2))
     elif args.cmd == "send-replies":
         send_replies(args.yes)
     elif args.cmd == "watch-outlook":

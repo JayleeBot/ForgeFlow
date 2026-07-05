@@ -26,6 +26,8 @@ required_fields: always include "price_breaks". Add each additional field below 
   - "moq" — buyer asks for minimum order quantity
   - "nre" — buyer asks for NRE or tooling costs
 
+requested_tiers: the verbatim service-tier / pricing-scenario labels the buyer asks the supplier to price separately so they can be compared, e.g. ["Quick Turn", "Standard Turn"] or ["Air", "Sea"]. List them only when the buyer explicitly names more than one scenario for the same part/quantities. Return an empty list when the buyer does not ask for multiple tiers — do not invent tiers.
+
 Extract only from the latest buyer email. Do not infer fields that are not explicitly mentioned.
 
 Division of responsibility:

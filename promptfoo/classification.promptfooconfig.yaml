@@ -21,3 +21,5 @@ defaultTest:
       value: file://classification.py:check_part_numbers
     - type: python
       value: file://classification.py:check_missing_fields
+    - type: python
+      value: file://classification.py:check_service_tiers

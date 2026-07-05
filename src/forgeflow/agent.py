@@ -24,12 +24,14 @@ class PriceBreak:
     quantity: int
     unit_price: str
     lead_time: str | None
+    service_tier: str | None = None
 
 
 @dataclass(slots=True)
 class PartMissing:
     part_number: str
     missing: list[str]
+    service_tier: str | None = None
 
 
 @dataclass(slots=True)
@@ -42,6 +44,7 @@ class MissingFields:
 class RFQRequirements:
     quantities_requested: list[int]
     required_fields: list[str]
+    requested_tiers: list[str]
 
 
 @dataclass(slots=True)
@@ -104,8 +107,17 @@ _RFQ_EXTRACTION_TOOL = {
                 },
                 "description": "Fields the buyer explicitly requests. Always include 'price_breaks'. Add others based on explicit mentions.",
             },
+            "requested_tiers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Verbatim service-tier / pricing-scenario labels the buyer asks to compare, "
+                    "e.g. ['Quick Turn', 'Standard Turn'] or ['Air', 'Sea']. Only tiers explicitly "
+                    "named in the buyer email. Empty array if the buyer does not request multiple tiers."
+                ),
+            },
         },
-        "required": ["quantities_requested", "required_fields"],
+        "required": ["quantities_requested", "required_fields", "requested_tiers"],
     },
 }
 
@@ -150,10 +162,14 @@ _QUOTE_EXTRACTION_TOOL = {
                             "type": ["string", "null"],
                             "description": "Production lead time for this part, verbatim e.g. '15 business days'. Null if this part has no stated lead time.",
                         },
+                        "service_tier": {
+                            "type": ["string", "null"],
+                            "description": "Verbatim service-tier / pricing-scenario label this row belongs to, e.g. 'Quick Turn' or 'Standard Turn'. Null if the quote has no tier split.",
+                        },
                     },
-                    "required": ["part_number", "quantity", "unit_price", "lead_time"],
+                    "required": ["part_number", "quantity", "unit_price", "lead_time", "service_tier"],
                 },
-                "description": "One row per quantity tier. part_number and lead_time repeat across a part's tiers.",
+                "description": "One row per (service_tier, quantity). The same part+quantity may appear once per service tier. part_number and lead_time repeat across a part's rows.",
             },
             "long_lead_time_parts": {
                 "type": "array",
@@ -196,10 +212,14 @@ _QUOTE_EXTRACTION_TOOL = {
                                         "enum": ["unit_price", "lead_time"],
                                     },
                                 },
+                                "service_tier": {
+                                    "type": ["string", "null"],
+                                    "description": "Service tier this gap belongs to, verbatim e.g. 'Quick Turn'. Null if the quote has no tier split.",
+                                },
                             },
                             "required": ["part_number", "missing"],
                         },
-                        "description": "Per-part line-level gaps for every quoted part that is incomplete (include parts mentioned but not yet priced).",
+                        "description": "Per-part line-level gaps for every quoted (part, service_tier) that is incomplete (include parts/tiers mentioned but not yet priced).",
                     },
                     "quote_level": {
                         "type": "array",
@@ -284,6 +304,7 @@ def _extract_rfq_requirements(messages: list[EmailMessage]) -> RFQRequirements:
     return RFQRequirements(
         quantities_requested=data["quantities_requested"],
         required_fields=data["required_fields"],
+        requested_tiers=data.get("requested_tiers", []),
     )
 
 
@@ -306,7 +327,7 @@ def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
         quote_valid_until=data["quote_valid_until"],
         incoterms=data["incoterms"],
         price_breaks=[
-            PriceBreak(pb["part_number"], pb["quantity"], pb["unit_price"], pb["lead_time"])
+            PriceBreak(pb["part_number"], pb["quantity"], pb["unit_price"], pb["lead_time"], pb.get("service_tier"))
             for pb in data["price_breaks"]
         ],
         long_lead_time_parts=data["long_lead_time_parts"],
@@ -317,7 +338,7 @@ def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
         blocking_question=data["blocking_question"],
         missing_fields=MissingFields(
             per_part=[
-                PartMissing(pm["part_number"], pm["missing"])
+                PartMissing(pm["part_number"], pm["missing"], pm.get("service_tier"))
                 for pm in data["missing_fields"]["per_part"]
             ],
             quote_level=data["missing_fields"]["quote_level"],

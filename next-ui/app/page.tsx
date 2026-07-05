@@ -26,6 +26,7 @@ type ProcessingResult = {
   rfq_requirements: {
     quantities_requested: number[];
     required_fields: string[];
+    requested_tiers?: string[];
   } | null;
   supplier_quote: SupplierQuote | null;
 };
@@ -44,7 +45,7 @@ type SupplierQuote = {
   nre: string | null;
   blocking_question: string | null;
   missing_fields: {
-    per_part: { part_number: string; missing: string[] }[];
+    per_part: { part_number: string; missing: string[]; service_tier?: string | null }[];
     quote_level: string[];
   };
 };
@@ -54,6 +55,7 @@ type PriceBreak = {
   quantity: number;
   unit_price: string;
   lead_time: string | null;
+  service_tier?: string | null;
 };
 
 type CollectionForm = {
@@ -73,6 +75,7 @@ type CollectionForm = {
     status: string;
   }[];
   quantities_requested?: number[];
+  requested_tiers?: string[];
   price_breaks?: PriceBreak[];
   missing_items?: string[];
   flags?: {
@@ -390,6 +393,7 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
             <div className="traceGrid">
               <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
               <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
+              <Field label="Requested Tiers" value={step.result.rfq_requirements.requested_tiers?.join(", ") || "None"} />
             </div>
           </section>
         )}
@@ -404,30 +408,7 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
         </section>
         <section className="detailSection">
           <h4>Price Breaks</h4>
-          {quote.price_breaks.length ? (
-            <table className="innerTable">
-              <thead>
-                <tr>
-                  <th>Part</th>
-                  <th>Qty</th>
-                  <th>Unit Price</th>
-                  <th>Lead Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {quote.price_breaks.map((priceBreak, index) => (
-                  <tr key={`${priceBreak.part_number}-${priceBreak.quantity}-${index}`}>
-                    <td>{priceBreak.part_number}</td>
-                    <td>{priceBreak.quantity}</td>
-                    <td>{priceBreak.unit_price}</td>
-                    <td>{priceBreak.lead_time || <span className="missing">Missing</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="missing">No price breaks extracted.</p>
-          )}
+          <PriceBreakTable priceBreaks={quote.price_breaks} />
         </section>
         <section className="detailColumns">
           <div>
@@ -459,6 +440,7 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
         <div className="traceGrid">
           <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
           <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
+          <Field label="Requested Tiers" value={step.result.rfq_requirements.requested_tiers?.join(", ") || "None"} />
         </div>
         <pre className="jsonBlock">{JSON.stringify(step.result.rfq_requirements, null, 2)}</pre>
       </div>
@@ -617,6 +599,12 @@ function InteractionDetails({ row }: { row: Interaction }) {
           <div>
             <h3>Quantities Requested</h3>
             <p>{form.quantities_requested?.join(", ") || "No quantities extracted"}</p>
+            {form.requested_tiers && form.requested_tiers.length > 0 && (
+              <>
+                <h3>Requested Tiers</h3>
+                <p>{form.requested_tiers.join(", ")}</p>
+              </>
+            )}
           </div>
           <div>
             <h3>Fields To Collect</h3>
@@ -665,30 +653,7 @@ function InteractionDetails({ row }: { row: Interaction }) {
 
       <section className="detailSection">
         <h3>Price Breaks</h3>
-        {quote.price_breaks.length ? (
-          <table className="innerTable">
-            <thead>
-              <tr>
-                <th>Part</th>
-                <th>Quantity</th>
-                <th>Unit Price</th>
-                <th>Lead Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quote.price_breaks.map((priceBreak, index) => (
-                <tr key={`${priceBreak.part_number}-${priceBreak.quantity}-${index}`}>
-                  <td>{priceBreak.part_number}</td>
-                  <td>{priceBreak.quantity}</td>
-                  <td>{priceBreak.unit_price}</td>
-                  <td>{priceBreak.lead_time || <span className="missing">Missing</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="missing">No price breaks extracted.</p>
-        )}
+        <PriceBreakTable priceBreaks={quote.price_breaks} />
       </section>
 
       <section className="detailColumns">
@@ -761,23 +726,78 @@ function displayFieldValue(value: string | number | PriceBreak[] | null | undefi
   return String(value);
 }
 
+function PriceBreakTable({ priceBreaks }: { priceBreaks: PriceBreak[] }) {
+  if (!priceBreaks.length) {
+    return <p className="missing">No price breaks extracted.</p>;
+  }
+  const hasTiers = priceBreaks.some((priceBreak) => priceBreak.service_tier);
+  return (
+    <table className="innerTable">
+      <thead>
+        <tr>
+          {hasTiers && <th>Tier</th>}
+          <th>Part</th>
+          <th>Quantity</th>
+          <th>Unit Price</th>
+          <th>Lead Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {priceBreaks.map((priceBreak, index) => (
+          <tr key={`${priceBreak.service_tier ?? ""}-${priceBreak.part_number}-${priceBreak.quantity}-${index}`}>
+            {hasTiers && <td>{priceBreak.service_tier || "—"}</td>}
+            <td>{priceBreak.part_number}</td>
+            <td>{priceBreak.quantity}</td>
+            <td>{priceBreak.unit_price}</td>
+            <td>{priceBreak.lead_time || <span className="missing">Missing</span>}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function isComplete(quote: SupplierQuote) {
   return missingItems(quote).length === 0 && !quote.blocking_question;
 }
 
+function partLabel(part: { part_number: string; service_tier?: string | null }) {
+  return part.service_tier ? `${part.part_number} (${part.service_tier})` : part.part_number;
+}
+
+function normTier(tier: string | null | undefined) {
+  return (tier || "").trim().toLowerCase();
+}
+
 function missingItems(quote: SupplierQuote, requirements?: ProcessingResult["rfq_requirements"]) {
   const required = requirements?.required_fields || [];
+  const tiers = requirements?.requested_tiers || [];
   const items: string[] = [];
-  if (required.includes("price_breaks") && quote.price_breaks.length === 0) {
-    items.push("price_breaks");
+  if (required.includes("price_breaks")) {
+    if (tiers.length) {
+      for (const tier of tiers) {
+        if (!quote.price_breaks.some((row) => normTier(row.service_tier) === normTier(tier))) {
+          items.push(`${tier}: price_breaks`);
+        }
+      }
+    } else if (quote.price_breaks.length === 0) {
+      items.push("price_breaks");
+    }
   }
   if (required.includes("lead_time")) {
     for (const part of quote.missing_fields.per_part) {
       if (part.missing.includes("lead_time")) {
-        items.push(`${part.part_number}: lead_time`);
+        items.push(`${partLabel(part)}: lead_time`);
       }
     }
-    if (quote.price_breaks.length > 0 && !quote.price_breaks.some((row) => row.lead_time)) {
+    if (tiers.length) {
+      for (const tier of tiers) {
+        const rows = quote.price_breaks.filter((row) => normTier(row.service_tier) === normTier(tier));
+        if (rows.length > 0 && !rows.some((row) => row.lead_time)) {
+          items.push(`${tier}: lead_time`);
+        }
+      }
+    } else if (quote.price_breaks.length > 0 && !quote.price_breaks.some((row) => row.lead_time)) {
       items.push("lead_time");
     }
   }
@@ -792,7 +812,7 @@ function missingItems(quote: SupplierQuote, requirements?: ProcessingResult["rfq
     }
   }
   for (const part of quote.missing_fields.per_part) {
-    const item = `${part.part_number}: ${part.missing.join(", ")}`;
+    const item = `${partLabel(part)}: ${part.missing.join(", ")}`;
     if (!items.includes(item) && (!requirements || part.missing.some((field) => field !== "lead_time"))) {
       items.push(item);
     }

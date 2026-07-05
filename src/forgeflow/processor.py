@@ -58,22 +58,38 @@ def draft_reply(message: EmailMessage, result: ProcessingResult) -> str | None:
     ])
 
 
+def _norm_tier(tier: str | None) -> str:
+    return (tier or "").strip().lower()
+
+
 def _missing_required_items(quote: SupplierQuoteData, result: ProcessingResult) -> list[str]:
     required = (
         result.rfq_requirements.required_fields
         if result.rfq_requirements
         else ["price_breaks", "lead_time", "payment_terms", "nre"]
     )
+    tiers = result.rfq_requirements.requested_tiers if result.rfq_requirements else []
     missing: list[str] = []
 
-    if "price_breaks" in required and not quote.price_breaks:
-        missing.append("- price_breaks")
+    if "price_breaks" in required:
+        if tiers:
+            for tier in tiers:
+                if not any(_norm_tier(row.service_tier) == _norm_tier(tier) for row in quote.price_breaks):
+                    missing.append(f"- {tier}: price_breaks")
+        elif not quote.price_breaks:
+            missing.append("- price_breaks")
 
     if "lead_time" in required:
         for part in quote.missing_fields.per_part:
             if "lead_time" in part.missing:
-                missing.append(f"- {part.part_number}: lead_time")
-        if quote.price_breaks and not any(row.lead_time for row in quote.price_breaks):
+                label = f"{part.part_number} ({part.service_tier})" if part.service_tier else part.part_number
+                missing.append(f"- {label}: lead_time")
+        if tiers:
+            for tier in tiers:
+                rows = [row for row in quote.price_breaks if _norm_tier(row.service_tier) == _norm_tier(tier)]
+                if rows and not any(row.lead_time for row in rows):
+                    missing.append(f"- {tier}: lead_time")
+        elif quote.price_breaks and not any(row.lead_time for row in quote.price_breaks):
             missing.append("- lead_time")
 
     quote_level_values = {

@@ -33,12 +33,14 @@ quote_valid_until: the quote validity / expiration date, verbatim e.g. "2026-06-
 
 incoterms: the delivery terms / Incoterms, verbatim e.g. "FOB Shenzhen". Null if absent.
 
-price_breaks: one row per quantity tier present in the thread, across all emails (not just the latest). Each row must have:
+price_breaks: one row per (service_tier, quantity break) present in the thread, across all emails (not just the latest). Each row must have:
   - part_number: the part this row is priced for, verbatim (from "PN:", "Part Number", etc.).
   - quantity: integer.
   - unit_price: verbatim string as stated, e.g. "$7.80" or "USD 45.00/pc".
-  - lead_time: the production lead time for THIS part, verbatim e.g. "15 business days" or "12 weeks". Null only if this part has no stated lead time.
-Lead time is per part: when one part lists several quantity tiers, every tier of that part shares the part's lead time — repeat it on each row. Different parts may have different lead times (e.g. one part 20 business days, another 15) — keep each part's own value; never collapse the quote to a single lead time or drop a part's lead time.
+  - lead_time: the production lead time for THIS row, verbatim e.g. "15 business days" or "12 weeks". Null only if there is no stated lead time.
+  - service_tier: the service-tier / pricing-scenario label this row belongs to, verbatim e.g. "Quick Turn" or "Standard Turn". Set to null when the quote has NO tier split.
+Service tiers: when the supplier prices the same part+quantities under more than one named scenario (e.g. "Quick Turn (4 weeks)" and "Standard Turn (12 weeks)", or "Air" vs "Sea"), emit one row per (service_tier, quantity) and tag each row with its service_tier. Never merge two tiers into one row, and never drop a tier. Each tier carries its own lead_time. If the quote has no such split, set service_tier to null on EVERY row — do not invent a tier.
+Lead time is per part/tier: when one part lists several quantity breaks, every break of that part+tier shares that lead time — repeat it on each row. Different parts may have different lead times (e.g. one part 20 business days, another 15) — keep each part's own value; never collapse the quote to a single lead time or drop a part's lead time.
 
 long_lead_time_parts: list parts whose lead time is stated in calendar weeks and is 8 weeks or more, e.g. ["IC-TPS65987DDFT (32 WEEKS)", "CONN-BM14B-24DS (20 WEEKS)"]. Lead times stated in business days are NOT calendar weeks — do not flag them. Return empty array if none.
 
@@ -59,7 +61,7 @@ Do NOT set blocking_question for:
   - gaps the supplier will fill themselves (waiting on their own factory / internal data); those are per_part missing fields, not buyer-blocked questions
 
 missing_fields: an object with two arrays — per_part and quote_level — describing what the supplier has NOT yet provided.
-  per_part: for EVERY part in this RFQ whose quote is incomplete, an entry {part_number, missing}. Allowed missing values: "unit_price" (no concrete price for that part) and "lead_time" (no concrete production lead time for that part). Include parts mentioned in the thread but not yet priced (they will have no row in price_breaks). Omit any part that is fully quoted.
+  per_part: for EVERY (part, service_tier) in this RFQ whose quote is incomplete, an entry {part_number, missing, service_tier}. Allowed missing values: "unit_price" (no concrete price for that part/tier) and "lead_time" (no concrete production lead time for that part/tier). Set service_tier to the tier label the gap belongs to (verbatim), or null when the quote has no tier split. Include parts/tiers mentioned in the thread but not yet priced (they will have no row in price_breaks). Omit any (part, tier) that is fully quoted.
   quote_level: quote-wide fields not yet provided. Allowed values: "payment_terms", "nre".
     - "payment_terms": list it when no concrete payment terms appear anywhere in the thread (absent or TBD).
     - "nre": list it ONLY when the quote involves NRE / tooling and the supplier flagged it without a figure (e.g. "NRE: TBD — pending review"). If the quote does not involve NRE, or the supplier explicitly says there is none, do NOT list nre.

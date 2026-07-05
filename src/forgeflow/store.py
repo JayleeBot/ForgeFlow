@@ -440,6 +440,7 @@ def _collection_form(
                 for field in requirements.get("required_fields", [])
             ],
             "quantities_requested": requirements.get("quantities_requested", []),
+            "requested_tiers": requirements.get("requested_tiers", []),
         }
 
     quote = result.get("supplier_quote")
@@ -505,6 +506,7 @@ def _requirements_from_schema(schema: dict[str, Any] | None) -> dict[str, Any] |
             if field.get("required")
         ],
         "quantities_requested": schema.get("quantities_requested", []),
+        "requested_tiers": schema.get("requested_tiers", []),
     }
 
 
@@ -624,22 +626,39 @@ def _missing_items(quote: dict[str, Any], rfq_requirements: dict[str, Any] | Non
     return items
 
 
+def _norm_tier(tier: str | None) -> str:
+    return (tier or "").strip().lower()
+
+
 def _missing_required_items(
     quote: dict[str, Any],
     rfq_requirements: dict[str, Any] | None,
 ) -> list[str]:
     required = (rfq_requirements or {}).get("required_fields") or _inferred_field_keys(quote)
+    tiers = (rfq_requirements or {}).get("requested_tiers") or []
     items: list[str] = []
+    price_breaks = quote.get("price_breaks", [])
 
-    if "price_breaks" in required and not quote.get("price_breaks"):
-        items.append("price_breaks")
+    if "price_breaks" in required:
+        if tiers:
+            for tier in tiers:
+                if not any(_norm_tier(row.get("service_tier")) == _norm_tier(tier) for row in price_breaks):
+                    items.append(f"{tier}: price_breaks")
+        elif not price_breaks:
+            items.append("price_breaks")
 
     if "lead_time" in required:
         for part in quote.get("missing_fields", {}).get("per_part", []):
             if "lead_time" in part.get("missing", []):
-                items.append(f"{part.get('part_number')}: lead_time")
-        price_breaks = quote.get("price_breaks", [])
-        if price_breaks and not any(row.get("lead_time") for row in price_breaks):
+                tier = part.get("service_tier")
+                label = f"{part.get('part_number')} ({tier})" if tier else part.get("part_number")
+                items.append(f"{label}: lead_time")
+        if tiers:
+            for tier in tiers:
+                rows = [row for row in price_breaks if _norm_tier(row.get("service_tier")) == _norm_tier(tier)]
+                if rows and not any(row.get("lead_time") for row in rows):
+                    items.append(f"{tier}: lead_time")
+        elif price_breaks and not any(row.get("lead_time") for row in price_breaks):
             items.append("lead_time")
 
     quote_level_values = {

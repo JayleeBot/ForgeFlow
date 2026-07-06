@@ -23,3 +23,5 @@ defaultTest:
       value: file://classification.py:check_missing_fields
     - type: python
       value: file://classification.py:check_service_tiers
+    - type: python
+      value: file://classification.py:check_mfg

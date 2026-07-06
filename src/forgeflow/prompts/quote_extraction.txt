@@ -33,8 +33,12 @@ quote_valid_until: the quote validity / expiration date, verbatim e.g. "2026-06-
 
 incoterms: the delivery terms / Incoterms, verbatim e.g. "FOB Shenzhen". Null if absent.
 
+manufacturer: the manufacturer / brand the supplier is actually quoting, verbatim e.g. "NorthBolt Industrial". Null if the supplier does not state one (normal for custom / made-to-print parts).
+
+mfg_part_number: the manufacturer part number (MPN) the supplier is actually quoting, verbatim e.g. "NB-0832-1000-BOX". Extract the supplier's OWN stated MPN even when it differs from the buyer's requested one — a difference means the supplier is offering a substitute, which the buyer must review; do not "correct" it to the buyer's number. Null if the supplier states no MPN.
+
 price_breaks: one row per (service_tier, quantity break) present in the thread, across all emails (not just the latest). Each row must have:
-  - part_number: the part this row is priced for, verbatim (from "PN:", "Part Number", etc.).
+  - part_number: the BUYER's own / internal part number this row is priced for, verbatim (from the buyer's "PN:", "Part Number", "Our Part Number", etc.). Use the buyer's part number, not the manufacturer part number (the manufacturer part number goes in the quote-level mfg_part_number field).
   - quantity: integer.
   - unit_price: verbatim string as stated, e.g. "$7.80" or "USD 45.00/pc".
   - lead_time: the production lead time for THIS row, verbatim e.g. "15 business days" or "12 weeks". Null only if there is no stated lead time.

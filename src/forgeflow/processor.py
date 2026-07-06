@@ -41,6 +41,17 @@ def draft_reply(message: EmailMessage, result: ProcessingResult) -> str | None:
     if quote.blocking_question:
         return f"[FLAG FOR BUYER]\n\nSupplier needs input before ForgeFlow can complete this quote:\n{quote.blocking_question}"
 
+    mismatch = _mfg_mismatch(quote, result)
+    if mismatch:
+        expected, quoted = mismatch
+        return (
+            "[FLAG FOR BUYER]\n\n"
+            "Supplier quoted a different manufacturer part number than the RFQ specified — "
+            "please confirm whether this substitute is acceptable before proceeding:\n"
+            f"  RFQ specified:    {expected}\n"
+            f"  Supplier quoted:  {quoted}"
+        )
+
     missing = _missing_required_items(quote, result)
     if not missing:
         return None
@@ -58,7 +69,7 @@ def draft_reply(message: EmailMessage, result: ProcessingResult) -> str | None:
     ])
 
 
-def _norm_tier(tier: str | None) -> str:
+def _norm(tier: str | None) -> str:
     return (tier or "").strip().lower()
 
 
@@ -74,7 +85,7 @@ def _missing_required_items(quote: SupplierQuoteData, result: ProcessingResult) 
     if "price_breaks" in required:
         if tiers:
             for tier in tiers:
-                if not any(_norm_tier(row.service_tier) == _norm_tier(tier) for row in quote.price_breaks):
+                if not any(_norm(row.service_tier) == _norm(tier) for row in quote.price_breaks):
                     missing.append(f"- {tier}: price_breaks")
         elif not quote.price_breaks:
             missing.append("- price_breaks")
@@ -86,7 +97,7 @@ def _missing_required_items(quote: SupplierQuoteData, result: ProcessingResult) 
                 missing.append(f"- {label}: lead_time")
         if tiers:
             for tier in tiers:
-                rows = [row for row in quote.price_breaks if _norm_tier(row.service_tier) == _norm_tier(tier)]
+                rows = [row for row in quote.price_breaks if _norm(row.service_tier) == _norm(tier)]
                 if rows and not any(row.lead_time for row in rows):
                     missing.append(f"- {tier}: lead_time")
         elif quote.price_breaks and not any(row.lead_time for row in quote.price_breaks):
@@ -102,4 +113,20 @@ def _missing_required_items(quote: SupplierQuoteData, result: ProcessingResult) 
         if field in required and not quote_level_values[field]:
             missing.append(f"- {field}")
 
+    # MFG part number is presence-driven: required only when the buyer named one.
+    # A supplier who quoted a DIFFERENT number is handled as a blocking mismatch, not "missing".
+    buyer_mfg = result.rfq_requirements.mfg_part_number if result.rfq_requirements else None
+    if buyer_mfg and not quote.mfg_part_number:
+        missing.append("- mfg_part_number")
+
     return list(dict.fromkeys(missing))
+
+
+def _mfg_mismatch(quote: SupplierQuoteData, result: ProcessingResult) -> tuple[str, str] | None:
+    """Return (expected, quoted) when the buyer named an MFG part number and the
+    supplier quoted a different one — a substitution the buyer must review."""
+    expected = result.rfq_requirements.mfg_part_number if result.rfq_requirements else None
+    quoted = quote.mfg_part_number
+    if expected and quoted and _norm(expected) != _norm(quoted):
+        return expected, quoted
+    return None

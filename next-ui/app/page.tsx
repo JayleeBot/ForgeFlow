@@ -27,6 +27,9 @@ type ProcessingResult = {
     quantities_requested: number[];
     required_fields: string[];
     requested_tiers?: string[];
+    our_part_number?: string | null;
+    manufacturer?: string | null;
+    mfg_part_number?: string | null;
   } | null;
   supplier_quote: SupplierQuote | null;
 };
@@ -37,6 +40,8 @@ type SupplierQuote = {
   quote_id: string | null;
   quote_valid_until: string | null;
   incoterms: string | null;
+  manufacturer?: string | null;
+  mfg_part_number?: string | null;
   price_breaks: PriceBreak[];
   long_lead_time_parts: string[];
   coo: string | null;
@@ -76,11 +81,16 @@ type CollectionForm = {
   }[];
   quantities_requested?: number[];
   requested_tiers?: string[];
+  our_part_number?: string | null;
+  manufacturer?: string | null;
+  mfg_part_number?: string | null;
+  expected_mfg_part_number?: string | null;
   price_breaks?: PriceBreak[];
   missing_items?: string[];
   flags?: {
     blocking_question: string | null;
     long_lead_time_parts: string[];
+    mfg_mismatch?: { expected: string; quoted: string } | null;
   };
 };
 
@@ -391,16 +401,28 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
           <section className="detailSection">
             <h4>RFQ Collection Schema Used</h4>
             <div className="traceGrid">
+              <Field label="Our Part Number" value={step.result.rfq_requirements.our_part_number || "None"} />
+              <Field label="Manufacturer" value={step.result.rfq_requirements.manufacturer || "None"} />
+              <Field label="Mfg Part Number" value={step.result.rfq_requirements.mfg_part_number || "None"} />
               <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
               <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
               <Field label="Requested Tiers" value={step.result.rfq_requirements.requested_tiers?.join(", ") || "None"} />
             </div>
           </section>
         )}
+        {mfgMismatch(quote, step.result.rfq_requirements) && (
+          <p className="missing">
+            ⚠ Mfg part number mismatch — RFQ specified{" "}
+            <strong>{step.result.rfq_requirements?.mfg_part_number}</strong>, supplier quoted{" "}
+            <strong>{quote.mfg_part_number}</strong>. Buyer must confirm the substitute.
+          </p>
+        )}
         <h4>Supplier Extraction</h4>
         <section className="fieldGrid">
           <Field label="Supplier" value={quote.supplier_name} />
           <Field label="RFQ Ref" value={quote.rfq_reference} />
+          <Field label="Manufacturer" value={quote.manufacturer ?? null} />
+          <Field label="Mfg Part Number" value={quote.mfg_part_number ?? null} />
           <Field label="Payment Terms" value={quote.payment_terms} />
           <Field label="MOQ" value={quote.moq} />
           <Field label="NRE" value={quote.nre} />
@@ -438,6 +460,9 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
       <div className="traceDetails">
         <h4>RFQ Collection Schema</h4>
         <div className="traceGrid">
+          <Field label="Our Part Number" value={step.result.rfq_requirements.our_part_number || "None"} />
+          <Field label="Manufacturer" value={step.result.rfq_requirements.manufacturer || "None"} />
+          <Field label="Mfg Part Number" value={step.result.rfq_requirements.mfg_part_number || "None"} />
           <Field label="Quantities" value={step.result.rfq_requirements.quantities_requested.join(", ") || "None"} />
           <Field label="Required Fields" value={step.result.rfq_requirements.required_fields.join(", ")} />
           <Field label="Requested Tiers" value={step.result.rfq_requirements.requested_tiers?.join(", ") || "None"} />
@@ -599,6 +624,12 @@ function InteractionDetails({ row }: { row: Interaction }) {
           <div>
             <h3>Quantities Requested</h3>
             <p>{form.quantities_requested?.join(", ") || "No quantities extracted"}</p>
+            {form.mfg_part_number && (
+              <>
+                <h3>Manufacturer / Mfg Part Number</h3>
+                <p>{[form.manufacturer, form.mfg_part_number].filter(Boolean).join(" / ")}</p>
+              </>
+            )}
             {form.requested_tiers && form.requested_tiers.length > 0 && (
               <>
                 <h3>Requested Tiers</h3>
@@ -628,6 +659,8 @@ function InteractionDetails({ row }: { row: Interaction }) {
     );
   }
 
+  const mismatch = form?.flags?.mfg_mismatch;
+  const ready = isComplete(quote) && !mismatch;
   return (
     <div className="detailsPanel">
       <div className="detailsHeader">
@@ -635,12 +668,22 @@ function InteractionDetails({ row }: { row: Interaction }) {
           <h2>{row.subject}</h2>
           <p>{row.sender}</p>
         </div>
-        <span className={isComplete(quote) ? "statusGood" : "statusNeedsWork"}>
-          {isComplete(quote) ? "Ready for review" : "Needs follow-up"}
+        <span className={ready ? "statusGood" : "statusNeedsWork"}>
+          {ready ? "Ready for review" : "Needs follow-up"}
         </span>
       </div>
 
+      {mismatch && (
+        <p className="missing">
+          ⚠ Mfg part number mismatch — RFQ specified <strong>{mismatch.expected}</strong>, supplier
+          quoted <strong>{mismatch.quoted}</strong>. Buyer must confirm the substitute.
+        </p>
+      )}
+
       <section className="fieldGrid">
+        {(quote.manufacturer || quote.mfg_part_number) && (
+          <Field label="Mfg Part Number" value={[quote.manufacturer, quote.mfg_part_number].filter(Boolean).join(" / ")} />
+        )}
         {(form?.fields || []).map((field) => (
           <Field
             key={field.key}
@@ -769,6 +812,13 @@ function normTier(tier: string | null | undefined) {
   return (tier || "").trim().toLowerCase();
 }
 
+// Presence-driven: the buyer named an MFG part number and the supplier quoted a different one.
+function mfgMismatch(quote: SupplierQuote, requirements?: ProcessingResult["rfq_requirements"]) {
+  const expected = requirements?.mfg_part_number;
+  const quoted = quote.mfg_part_number;
+  return Boolean(expected && quoted && normTier(expected) !== normTier(quoted));
+}
+
 function missingItems(quote: SupplierQuote, requirements?: ProcessingResult["rfq_requirements"]) {
   const required = requirements?.required_fields || [];
   const tiers = requirements?.requested_tiers || [];
@@ -816,6 +866,10 @@ function missingItems(quote: SupplierQuote, requirements?: ProcessingResult["rfq
     if (!items.includes(item) && (!requirements || part.missing.some((field) => field !== "lead_time"))) {
       items.push(item);
     }
+  }
+  // MFG part number is presence-driven: required only when the buyer named one.
+  if (requirements?.mfg_part_number && !quote.mfg_part_number) {
+    items.push("mfg_part_number");
   }
   return items;
 }

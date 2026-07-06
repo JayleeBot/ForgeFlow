@@ -45,6 +45,9 @@ class RFQRequirements:
     quantities_requested: list[int]
     required_fields: list[str]
     requested_tiers: list[str]
+    our_part_number: str | None = None
+    manufacturer: str | None = None
+    mfg_part_number: str | None = None
 
 
 @dataclass(slots=True)
@@ -62,6 +65,8 @@ class SupplierQuoteData:
     nre: str | None
     blocking_question: str | None
     missing_fields: MissingFields
+    manufacturer: str | None = None
+    mfg_part_number: str | None = None
 
 
 @dataclass(slots=True)
@@ -116,8 +121,20 @@ _RFQ_EXTRACTION_TOOL = {
                     "named in the buyer email. Empty array if the buyer does not request multiple tiers."
                 ),
             },
+            "our_part_number": {
+                "type": ["string", "null"],
+                "description": "The buyer's own/internal part number, verbatim e.g. '204-000517'. Null if the buyer does not give one.",
+            },
+            "manufacturer": {
+                "type": ["string", "null"],
+                "description": "The manufacturer / AVL brand named by the buyer for an off-the-shelf catalog part, verbatim e.g. 'NorthBolt Industrial'. Null for custom/made-to-print parts or if not stated.",
+            },
+            "mfg_part_number": {
+                "type": ["string", "null"],
+                "description": "The manufacturer part number (MPN / AVL number) named by the buyer, verbatim e.g. 'NB-0832-1000-BOX'. This identifies a specific catalog part the supplier must quote. Null for custom/made-to-print parts (e.g. PCB assemblies) or if not stated.",
+            },
         },
-        "required": ["quantities_requested", "required_fields", "requested_tiers"],
+        "required": ["quantities_requested", "required_fields", "requested_tiers", "our_part_number", "manufacturer", "mfg_part_number"],
     },
 }
 
@@ -147,6 +164,14 @@ _QUOTE_EXTRACTION_TOOL = {
                 "type": ["string", "null"],
                 "description": "Incoterms / delivery terms, verbatim e.g. 'FOB Shenzhen'. Null if absent.",
             },
+            "manufacturer": {
+                "type": ["string", "null"],
+                "description": "The manufacturer / brand the supplier is actually quoting, verbatim e.g. 'NorthBolt Industrial'. Null if the supplier does not state one (e.g. a custom/made-to-print part).",
+            },
+            "mfg_part_number": {
+                "type": ["string", "null"],
+                "description": "The manufacturer part number (MPN) the supplier is actually quoting, verbatim e.g. 'NB-0832-1000-BOX'. Extract the supplier's OWN stated MPN even if it differs from the buyer's requested one (that difference is a substitution the buyer must review). Null if the supplier does not state an MPN.",
+            },
             "price_breaks": {
                 "type": "array",
                 "items": {
@@ -154,7 +179,7 @@ _QUOTE_EXTRACTION_TOOL = {
                     "properties": {
                         "part_number": {
                             "type": "string",
-                            "description": "Part number this row is priced for, e.g. 'ET-PCBA-MAIN-V2'.",
+                            "description": "The buyer's own/internal part number this row is priced for, verbatim e.g. '204-000517' or 'ET-PCBA-MAIN-V2'. Use the buyer's part number, not the manufacturer part number.",
                         },
                         "quantity": {"type": "integer"},
                         "unit_price": {"type": "string"},
@@ -235,6 +260,7 @@ _QUOTE_EXTRACTION_TOOL = {
         },
         "required": [
             "rfq_reference", "supplier_name", "quote_id", "quote_valid_until", "incoterms",
+            "manufacturer", "mfg_part_number",
             "price_breaks", "long_lead_time_parts",
             "coo", "payment_terms", "moq", "nre",
             "blocking_question", "missing_fields",
@@ -305,6 +331,9 @@ def _extract_rfq_requirements(messages: list[EmailMessage]) -> RFQRequirements:
         quantities_requested=data["quantities_requested"],
         required_fields=data["required_fields"],
         requested_tiers=data.get("requested_tiers", []),
+        our_part_number=data.get("our_part_number"),
+        manufacturer=data.get("manufacturer"),
+        mfg_part_number=data.get("mfg_part_number"),
     )
 
 
@@ -343,6 +372,8 @@ def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
             ],
             quote_level=data["missing_fields"]["quote_level"],
         ),
+        manufacturer=data.get("manufacturer"),
+        mfg_part_number=data.get("mfg_part_number"),
     )
 
 

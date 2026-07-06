@@ -169,6 +169,7 @@
     "email_file": "data/sample_emails/thread_pcb_01_e1.eml",
     "expected_classification": "rfq_sent",
     "expected_requested_tiers": ["Quick Turn", "Standard Turn"],
+    "expected_mfg_part_number": null,
     "expected_price_breaks": false,
     "expected_production_lead_time": false,
     "expected_long_lead_time_parts": false,
@@ -184,6 +185,7 @@
     "expected_classification": "supplier_quote",
     "expected_requested_tiers": ["Quick Turn", "Standard Turn"],
     "expected_price_break_tiers": ["Quick Turn", "Standard Turn"],
+    "expected_mfg_part_number": null,
     "expected_price_breaks": true,
     "expected_production_lead_time": true,
     "expected_long_lead_time_parts": true,
@@ -413,6 +415,61 @@
     "thread_emails": [
       "data/sample_emails/thread_revised_quote_e1.eml",
       "data/sample_emails/thread_revised_quote_e2.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
+    "expected_classification": "rfq_sent",
+    "expected_price_breaks": false,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": [],
+    "expected_requested_tiers": [],
+    "expected_mfg_part_number": "NB-0832-1000-BOX",
+    "notes": "Off-shelf catalog screw RFQ (MFG feature). Buyer names AVL manufacturer NorthBolt Industrial and MFG part number NB-0832-1000-BOX. rfq_sent; the RFQ schema must capture the manufacturer part number.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_mfg_01_e1.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/thread_offshelf_mfg_01_e2_match.eml",
+    "expected_classification": "supplier_quote",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": []
+    },
+    "expected_price_break_tiers": null,
+    "expected_mfg_part_number": "NB-0832-1000-BOX",
+    "expected_mfg_confirmed": true,
+    "notes": "Off-shelf MFG feature - happy path. Supplier confirms the SAME manufacturer part number NB-0832-1000-BOX. No substitution; quote is complete and ready for review.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
+      "data/sample_emails/thread_offshelf_mfg_01_e2_match.eml"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/thread_offshelf_mfg_01_e2_sub.eml",
+    "expected_classification": "supplier_quote",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": []
+    },
+    "expected_price_break_tiers": null,
+    "expected_mfg_part_number": "NB-0832-1000-BOX",
+    "expected_mfg_confirmed": false,
+    "notes": "Off-shelf MFG feature - substitution path. Supplier quotes a DIFFERENT manufacturer part number (FastGrip FG-832X100-BOX) instead of the requested NorthBolt NB-0832-1000-BOX. Must be detected as an MFG mismatch that blocks ready-for-review pending buyer confirmation.",
+    "thread_emails": [
+      "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
+      "data/sample_emails/thread_offshelf_mfg_01_e2_sub.eml"
     ]
   }
 ]

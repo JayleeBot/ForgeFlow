@@ -58,6 +58,12 @@ def load_tests():
                         if "expected_price_break_tiers" in case
                         else json.dumps("__skip__")
                     ),
+                    "expected_mfg_part_number": (
+                        json.dumps(case["expected_mfg_part_number"])
+                        if "expected_mfg_part_number" in case
+                        else json.dumps("__skip__")
+                    ),
+                    "expected_mfg_confirmed": json.dumps(case.get("expected_mfg_confirmed")),
                 },
             }
         )
@@ -196,4 +202,51 @@ def check_service_tiers(output, context):
         "pass": ok,
         "score": 1.0 if ok else 0.0,
         "reason": "service tiers ok" if ok else "; ".join(reasons),
+    }
+
+
+def _norm(value) -> str:
+    return (value or "").strip().lower()
+
+
+def check_mfg(output, context):
+    """Verify manufacturer-part-number capture and substitution detection.
+
+    Cases opt in via eval_cases.json:
+      - expected_mfg_part_number: string -> the buyer's RFQ must capture exactly this MFG P/N;
+        null -> the RFQ must capture NO MFG P/N (custom/PCB guard); omit the key to skip.
+      - expected_mfg_confirmed (supplier-quote cases only): true -> supplier quotes the SAME
+        MFG P/N (no substitution); false -> supplier quotes a DIFFERENT one (substitution the
+        buyer must review). Omit/null to skip the supplier-side check.
+    """
+    result = json.loads(output)
+    vars_ = context["vars"]
+    reasons: list[str] = []
+
+    expected_mfg = json.loads(vars_.get("expected_mfg_part_number", '"__skip__"'))
+    if expected_mfg != "__skip__":
+        got = (result.get("rfq_requirements") or {}).get("mfg_part_number")
+        if expected_mfg is None:
+            if got:
+                reasons.append(f"expected no MFG part number, got {got!r}")
+        elif not got or _norm(got) != _norm(expected_mfg):
+            reasons.append(f"rfq mfg_part_number: got {got!r}, expected {expected_mfg!r}")
+
+    confirmed = json.loads(vars_.get("expected_mfg_confirmed", "null"))
+    sq = result.get("supplier_quote")
+    if confirmed is not None and sq is not None:
+        quoted = sq.get("mfg_part_number")
+        matches = bool(quoted and expected_mfg not in (None, "__skip__") and _norm(quoted) == _norm(expected_mfg))
+        if confirmed and not matches:
+            reasons.append(f"expected supplier to confirm {expected_mfg!r}, got {quoted!r}")
+        if not confirmed and matches:
+            reasons.append(f"expected a substitute MFG part number, but supplier matched {quoted!r}")
+        if not confirmed and not quoted:
+            reasons.append("expected a substitute MFG part number, but supplier stated none")
+
+    ok = not reasons
+    return {
+        "pass": ok,
+        "score": 1.0 if ok else 0.0,
+        "reason": "mfg ok" if ok else "; ".join(reasons),
     }

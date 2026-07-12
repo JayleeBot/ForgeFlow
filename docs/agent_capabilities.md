@@ -16,7 +16,7 @@ for anything missing — leaving the send decision to a human.
 | Capability | Status | Notes |
 |---|---|---|
 | Read incoming mail (local `.eml`) | Done | `LocalMailbox` + `parser.py` |
-| Read incoming mail (Outlook / MS Graph) | Done | `OutlookMailbox`; fetch + sendMail wired, token from env |
+| Read incoming mail (Outlook / MS Graph) | Done | `OutlookMailbox`; fetch + sendMail wired, token from env; access token auto-refreshes on 401 via saved refresh token |
 | Thread awareness | Done | groups emails by normalized subject + sender; full thread context passed to extraction |
 | Clean & normalize body | Done | strips quoted replies, signatures, HTML |
 

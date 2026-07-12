@@ -153,6 +153,8 @@ For a personal Outlook.com mailbox, first sign in with delegated OAuth:
 PYTHONPATH=src python3 -m forgeflow.cli login-outlook
 ```
 
+You only sign in once. The short-lived access token is refreshed automatically (using the saved refresh token) whenever Graph returns a 401, so long-running pollers keep working without re-authentication. You only need to run `login-outlook` again if the refresh token itself is revoked (password change, consent removed, or a security challenge) — in which case commands fail with `Outlook 登录已失效,请重新运行: forgeflow login-outlook`.
+
 Pull recent Outlook messages into the local processing log:
 
 ```bash
@@ -186,7 +188,7 @@ Send those replies after review:
 PYTHONPATH=src python3 -m forgeflow.cli send-replies --yes
 ```
 
-For local testing, click **Sync Outlook** in the dashboard after pasting a fresh Graph token into `FORGEFLOW_OUTLOOK_ACCESS_TOKEN`. Later deployment can replace this polling entrypoint with a Microsoft Graph change notification webhook while keeping the same processor and store contract.
+For local testing, click **Sync Outlook** in the dashboard once you've signed in via `login-outlook` (the access token refreshes itself as needed — no need to paste a fresh token). Later deployment can replace this polling entrypoint with a Microsoft Graph change notification webhook while keeping the same processor and store contract.
 
 ## How it works
 
@@ -205,4 +207,5 @@ For local testing, click **Sync Outlook** in the dashboard after pasting a fresh
 - [ ] Attachment parsing (Excel/PDF quote sheets)
 - [ ] Multi-supplier comparison view
 - [ ] Scheduled sync and follow-up reminders
+- [x] Automatic access-token refresh (delegated OAuth); one-time sign-in via `login-outlook`
 - [ ] Full OAuth flow for production Outlook integration

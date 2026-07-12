@@ -26,6 +26,14 @@ required_fields: always include "price_breaks". Add each additional field below 
   - "moq" — buyer asks for minimum order quantity
   - "nre" — buyer asks for NRE or tooling costs
 
+requested_tiers: the verbatim service-tier / pricing-scenario labels the buyer asks the supplier to price separately so they can be compared, e.g. ["Quick Turn", "Standard Turn"] or ["Air", "Sea"]. List them only when the buyer explicitly names more than one scenario for the same part/quantities. Return an empty list when the buyer does not ask for multiple tiers — do not invent tiers.
+
+our_part_number: the buyer's own / internal part number for this RFQ, verbatim e.g. "204-000517" (from "Our Part Number", "Part #", "PN:", etc.). Null if the buyer gives none.
+
+manufacturer: the manufacturer / AVL brand the buyer names for an off-the-shelf catalog part, verbatim e.g. "NorthBolt Industrial" (from "Manufacturer", "Mfr", "AVL", etc.). Null if the buyer names none — this is normal for custom / made-to-print parts such as PCB assemblies.
+
+mfg_part_number: the manufacturer part number (MPN / AVL number) the buyer names, verbatim e.g. "NB-0832-1000-BOX" (from "Manufacturer Part Number", "MPN", "MFG P/N", "AVL", etc.). This is the specific catalog part the supplier must quote. Null if the buyer names none (custom / made-to-print parts have no MPN). Do NOT copy the buyer's own part number here — only a distinct manufacturer/catalog number.
+
 Extract only from the latest buyer email. Do not infer fields that are not explicitly mentioned.
 
 Division of responsibility:

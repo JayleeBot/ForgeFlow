@@ -440,6 +440,10 @@ def _collection_form(
                 for field in requirements.get("required_fields", [])
             ],
             "quantities_requested": requirements.get("quantities_requested", []),
+            "requested_tiers": requirements.get("requested_tiers", []),
+            "our_part_number": requirements.get("our_part_number"),
+            "manufacturer": requirements.get("manufacturer"),
+            "mfg_part_number": requirements.get("mfg_part_number"),
         }
 
     quote = result.get("supplier_quote")
@@ -456,9 +460,13 @@ def _collection_form(
         "fields": fields,
         "price_breaks": quote.get("price_breaks", []),
         "missing_items": _missing_items(quote, rfq_requirements),
+        "manufacturer": quote.get("manufacturer"),
+        "mfg_part_number": quote.get("mfg_part_number"),
+        "expected_mfg_part_number": (rfq_requirements or {}).get("mfg_part_number"),
         "flags": {
             "blocking_question": quote.get("blocking_question"),
             "long_lead_time_parts": quote.get("long_lead_time_parts", []),
+            "mfg_mismatch": _mfg_mismatch(quote, rfq_requirements),
         },
     }
 
@@ -505,6 +513,10 @@ def _requirements_from_schema(schema: dict[str, Any] | None) -> dict[str, Any] |
             if field.get("required")
         ],
         "quantities_requested": schema.get("quantities_requested", []),
+        "requested_tiers": schema.get("requested_tiers", []),
+        "our_part_number": schema.get("our_part_number"),
+        "manufacturer": schema.get("manufacturer"),
+        "mfg_part_number": schema.get("mfg_part_number"),
     }
 
 
@@ -517,6 +529,12 @@ def _next_action(collection_form: dict[str, Any] | None, draft_reply: str | None
             "status": "needs_buyer_input",
             "type": "flag_buyer",
             "body": flags["blocking_question"],
+        }
+    if flags.get("mfg_mismatch"):
+        return {
+            "status": "needs_buyer_input",
+            "type": "flag_buyer",
+            "body": draft_reply,
         }
     if collection_form.get("missing_items"):
         return {
@@ -605,6 +623,7 @@ def _quote_complete(quote: dict[str, Any], rfq_requirements: dict[str, Any] | No
     missing_fields = quote.get("missing_fields", {})
     return (
         not quote.get("blocking_question")
+        and not _mfg_mismatch(quote, rfq_requirements)
         and not missing_fields.get("quote_level")
         and not missing_fields.get("per_part")
         and not _missing_required_items(quote, rfq_requirements)
@@ -624,22 +643,39 @@ def _missing_items(quote: dict[str, Any], rfq_requirements: dict[str, Any] | Non
     return items
 
 
+def _norm(tier: str | None) -> str:
+    return (tier or "").strip().lower()
+
+
 def _missing_required_items(
     quote: dict[str, Any],
     rfq_requirements: dict[str, Any] | None,
 ) -> list[str]:
     required = (rfq_requirements or {}).get("required_fields") or _inferred_field_keys(quote)
+    tiers = (rfq_requirements or {}).get("requested_tiers") or []
     items: list[str] = []
+    price_breaks = quote.get("price_breaks", [])
 
-    if "price_breaks" in required and not quote.get("price_breaks"):
-        items.append("price_breaks")
+    if "price_breaks" in required:
+        if tiers:
+            for tier in tiers:
+                if not any(_norm(row.get("service_tier")) == _norm(tier) for row in price_breaks):
+                    items.append(f"{tier}: price_breaks")
+        elif not price_breaks:
+            items.append("price_breaks")
 
     if "lead_time" in required:
         for part in quote.get("missing_fields", {}).get("per_part", []):
             if "lead_time" in part.get("missing", []):
-                items.append(f"{part.get('part_number')}: lead_time")
-        price_breaks = quote.get("price_breaks", [])
-        if price_breaks and not any(row.get("lead_time") for row in price_breaks):
+                tier = part.get("service_tier")
+                label = f"{part.get('part_number')} ({tier})" if tier else part.get("part_number")
+                items.append(f"{label}: lead_time")
+        if tiers:
+            for tier in tiers:
+                rows = [row for row in price_breaks if _norm(row.get("service_tier")) == _norm(tier)]
+                if rows and not any(row.get("lead_time") for row in rows):
+                    items.append(f"{tier}: lead_time")
+        elif price_breaks and not any(row.get("lead_time") for row in price_breaks):
             items.append("lead_time")
 
     quote_level_values = {
@@ -652,4 +688,19 @@ def _missing_required_items(
         if field in required and not quote_level_values[field]:
             items.append(field)
 
+    # MFG part number is presence-driven: required only when the buyer named one.
+    buyer_mfg = (rfq_requirements or {}).get("mfg_part_number")
+    if buyer_mfg and not quote.get("mfg_part_number"):
+        items.append("mfg_part_number")
+
     return list(dict.fromkeys(items))
+
+
+def _mfg_mismatch(quote: dict[str, Any], rfq_requirements: dict[str, Any] | None) -> dict[str, str] | None:
+    """Return {expected, quoted} when the buyer named an MFG part number and the
+    supplier quoted a different one — a substitution the buyer must review."""
+    expected = (rfq_requirements or {}).get("mfg_part_number")
+    quoted = quote.get("mfg_part_number")
+    if expected and quoted and _norm(expected) != _norm(quoted):
+        return {"expected": expected, "quoted": quoted}
+    return None

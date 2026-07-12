@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -47,6 +48,8 @@ def device_login(client_id: str, tenant: str = "consumers", scopes: str = DEFAUL
             "FORGEFLOW_OUTLOOK_ACCESS_TOKEN": token["access_token"],
             "FORGEFLOW_OUTLOOK_AUTH_MODE": "delegated",
             "FORGEFLOW_OUTLOOK_MAILBOX": "me",
+            "FORGEFLOW_AZURE_CLIENT_ID": client_id,
+            "FORGEFLOW_AZURE_TENANT_ID": tenant,
         }
         if token.get("refresh_token"):
             values["FORGEFLOW_OUTLOOK_REFRESH_TOKEN"] = token["refresh_token"]
@@ -54,6 +57,40 @@ def device_login(client_id: str, tenant: str = "consumers", scopes: str = DEFAUL
         print("Saved delegated Outlook token to .env", flush=True)
         return
     raise TimeoutError("Device login expired before authentication completed")
+
+
+RELOGIN_HINT = "Outlook 登录已失效,请重新运行: forgeflow login-outlook"
+
+
+def refresh_access_token(
+    client_id: str | None = None,
+    tenant: str | None = None,
+    refresh_token: str | None = None,
+    scopes: str = DEFAULT_SCOPES,
+) -> str:
+    client_id = client_id or os.environ.get("FORGEFLOW_AZURE_CLIENT_ID")
+    tenant = tenant or os.environ.get("FORGEFLOW_AZURE_TENANT_ID") or "consumers"
+    refresh_token = refresh_token or os.environ.get("FORGEFLOW_OUTLOOK_REFRESH_TOKEN")
+    if not client_id or not refresh_token:
+        raise RuntimeError(RELOGIN_HINT)
+    try:
+        token = _post(
+            f"{AUTH_ROOT}/{tenant}/oauth2/v2.0/token",
+            {
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "refresh_token": refresh_token,
+                "scope": scopes,
+            },
+        )
+    except RuntimeError as exc:
+        raise RuntimeError(RELOGIN_HINT) from exc
+
+    values = {"FORGEFLOW_OUTLOOK_ACCESS_TOKEN": token["access_token"]}
+    if token.get("refresh_token"):
+        values["FORGEFLOW_OUTLOOK_REFRESH_TOKEN"] = token["refresh_token"]
+    set_env_values(values)
+    return token["access_token"]
 
 
 def _post(url: str, data: dict[str, str]) -> dict:

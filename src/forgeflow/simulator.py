@@ -37,6 +37,14 @@ SCENARIOS: dict[str, list[str]] = {
     "supplier_question": [
         "data/sample_emails/08_supplier_question.eml",
     ],
+    "offshelf_mfg_match": [
+        "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
+        "data/sample_emails/thread_offshelf_mfg_01_e2_match.eml",
+    ],
+    "offshelf_mfg_substitute": [
+        "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
+        "data/sample_emails/thread_offshelf_mfg_01_e2_sub.eml",
+    ],
 }
 
 

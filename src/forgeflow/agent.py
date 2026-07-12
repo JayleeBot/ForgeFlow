@@ -24,12 +24,14 @@ class PriceBreak:
     quantity: int
     unit_price: str
     lead_time: str | None
+    service_tier: str | None = None
 
 
 @dataclass(slots=True)
 class PartMissing:
     part_number: str
     missing: list[str]
+    service_tier: str | None = None
 
 
 @dataclass(slots=True)
@@ -42,6 +44,10 @@ class MissingFields:
 class RFQRequirements:
     quantities_requested: list[int]
     required_fields: list[str]
+    requested_tiers: list[str]
+    our_part_number: str | None = None
+    manufacturer: str | None = None
+    mfg_part_number: str | None = None
 
 
 @dataclass(slots=True)
@@ -59,6 +65,8 @@ class SupplierQuoteData:
     nre: str | None
     blocking_question: str | None
     missing_fields: MissingFields
+    manufacturer: str | None = None
+    mfg_part_number: str | None = None
 
 
 @dataclass(slots=True)
@@ -104,8 +112,29 @@ _RFQ_EXTRACTION_TOOL = {
                 },
                 "description": "Fields the buyer explicitly requests. Always include 'price_breaks'. Add others based on explicit mentions.",
             },
+            "requested_tiers": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Verbatim service-tier / pricing-scenario labels the buyer asks to compare, "
+                    "e.g. ['Quick Turn', 'Standard Turn'] or ['Air', 'Sea']. Only tiers explicitly "
+                    "named in the buyer email. Empty array if the buyer does not request multiple tiers."
+                ),
+            },
+            "our_part_number": {
+                "type": ["string", "null"],
+                "description": "The buyer's own/internal part number, verbatim e.g. '204-000517'. Null if the buyer does not give one.",
+            },
+            "manufacturer": {
+                "type": ["string", "null"],
+                "description": "The manufacturer / AVL brand named by the buyer for an off-the-shelf catalog part, verbatim e.g. 'NorthBolt Industrial'. Null for custom/made-to-print parts or if not stated.",
+            },
+            "mfg_part_number": {
+                "type": ["string", "null"],
+                "description": "The manufacturer part number (MPN / AVL number) named by the buyer, verbatim e.g. 'NB-0832-1000-BOX'. This identifies a specific catalog part the supplier must quote. Null for custom/made-to-print parts (e.g. PCB assemblies) or if not stated.",
+            },
         },
-        "required": ["quantities_requested", "required_fields"],
+        "required": ["quantities_requested", "required_fields", "requested_tiers", "our_part_number", "manufacturer", "mfg_part_number"],
     },
 }
 
@@ -135,6 +164,14 @@ _QUOTE_EXTRACTION_TOOL = {
                 "type": ["string", "null"],
                 "description": "Incoterms / delivery terms, verbatim e.g. 'FOB Shenzhen'. Null if absent.",
             },
+            "manufacturer": {
+                "type": ["string", "null"],
+                "description": "The manufacturer / brand the supplier is actually quoting, verbatim e.g. 'NorthBolt Industrial'. Null if the supplier does not state one (e.g. a custom/made-to-print part).",
+            },
+            "mfg_part_number": {
+                "type": ["string", "null"],
+                "description": "The manufacturer part number (MPN) the supplier is actually quoting, verbatim e.g. 'NB-0832-1000-BOX'. Extract the supplier's OWN stated MPN even if it differs from the buyer's requested one (that difference is a substitution the buyer must review). Null if the supplier does not state an MPN.",
+            },
             "price_breaks": {
                 "type": "array",
                 "items": {
@@ -142,7 +179,7 @@ _QUOTE_EXTRACTION_TOOL = {
                     "properties": {
                         "part_number": {
                             "type": "string",
-                            "description": "Part number this row is priced for, e.g. 'ET-PCBA-MAIN-V2'.",
+                            "description": "The buyer's own/internal part number this row is priced for, verbatim e.g. '204-000517' or 'ET-PCBA-MAIN-V2'. Use the buyer's part number, not the manufacturer part number.",
                         },
                         "quantity": {"type": "integer"},
                         "unit_price": {"type": "string"},
@@ -150,10 +187,14 @@ _QUOTE_EXTRACTION_TOOL = {
                             "type": ["string", "null"],
                             "description": "Production lead time for this part, verbatim e.g. '15 business days'. Null if this part has no stated lead time.",
                         },
+                        "service_tier": {
+                            "type": ["string", "null"],
+                            "description": "Verbatim service-tier / pricing-scenario label this row belongs to, e.g. 'Quick Turn' or 'Standard Turn'. Null if the quote has no tier split.",
+                        },
                     },
-                    "required": ["part_number", "quantity", "unit_price", "lead_time"],
+                    "required": ["part_number", "quantity", "unit_price", "lead_time", "service_tier"],
                 },
-                "description": "One row per quantity tier. part_number and lead_time repeat across a part's tiers.",
+                "description": "One row per (service_tier, quantity). The same part+quantity may appear once per service tier. part_number and lead_time repeat across a part's rows.",
             },
             "long_lead_time_parts": {
                 "type": "array",
@@ -196,10 +237,14 @@ _QUOTE_EXTRACTION_TOOL = {
                                         "enum": ["unit_price", "lead_time"],
                                     },
                                 },
+                                "service_tier": {
+                                    "type": ["string", "null"],
+                                    "description": "Service tier this gap belongs to, verbatim e.g. 'Quick Turn'. Null if the quote has no tier split.",
+                                },
                             },
                             "required": ["part_number", "missing"],
                         },
-                        "description": "Per-part line-level gaps for every quoted part that is incomplete (include parts mentioned but not yet priced).",
+                        "description": "Per-part line-level gaps for every quoted (part, service_tier) that is incomplete (include parts/tiers mentioned but not yet priced).",
                     },
                     "quote_level": {
                         "type": "array",
@@ -215,6 +260,7 @@ _QUOTE_EXTRACTION_TOOL = {
         },
         "required": [
             "rfq_reference", "supplier_name", "quote_id", "quote_valid_until", "incoterms",
+            "manufacturer", "mfg_part_number",
             "price_breaks", "long_lead_time_parts",
             "coo", "payment_terms", "moq", "nre",
             "blocking_question", "missing_fields",
@@ -284,6 +330,10 @@ def _extract_rfq_requirements(messages: list[EmailMessage]) -> RFQRequirements:
     return RFQRequirements(
         quantities_requested=data["quantities_requested"],
         required_fields=data["required_fields"],
+        requested_tiers=data.get("requested_tiers", []),
+        our_part_number=data.get("our_part_number"),
+        manufacturer=data.get("manufacturer"),
+        mfg_part_number=data.get("mfg_part_number"),
     )
 
 
@@ -306,7 +356,7 @@ def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
         quote_valid_until=data["quote_valid_until"],
         incoterms=data["incoterms"],
         price_breaks=[
-            PriceBreak(pb["part_number"], pb["quantity"], pb["unit_price"], pb["lead_time"])
+            PriceBreak(pb["part_number"], pb["quantity"], pb["unit_price"], pb["lead_time"], pb.get("service_tier"))
             for pb in data["price_breaks"]
         ],
         long_lead_time_parts=data["long_lead_time_parts"],
@@ -317,11 +367,13 @@ def _extract_supplier_quote(messages: list[EmailMessage]) -> SupplierQuoteData:
         blocking_question=data["blocking_question"],
         missing_fields=MissingFields(
             per_part=[
-                PartMissing(pm["part_number"], pm["missing"])
+                PartMissing(pm["part_number"], pm["missing"], pm.get("service_tier"))
                 for pm in data["missing_fields"]["per_part"]
             ],
             quote_level=data["missing_fields"]["quote_level"],
         ),
+        manufacturer=data.get("manufacturer"),
+        mfg_part_number=data.get("mfg_part_number"),
     )
 
 

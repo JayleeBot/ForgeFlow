@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 from html import unescape
 from typing import Any
 
+from forgeflow.auth import refresh_access_token
 from forgeflow.models import EmailMessage
 
 
@@ -60,41 +61,42 @@ class GraphMailbox:
         )
 
     def _get(self, path: str) -> dict[str, Any]:
-        req = urllib.request.Request(
-            f"{GRAPH_ROOT}{path}",
-            headers={
-                "Authorization": f"Bearer {self.access_token}",
-                "Accept": "application/json",
-            },
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace").strip()
-            detail = f": {body}" if body else ""
-            raise RuntimeError(f"Microsoft Graph returned HTTP {exc.code}{detail}") from exc
+        return self._send("GET", path)
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            f"{GRAPH_ROOT}{path}",
-            data=data,
-            headers={
-                "Authorization": f"Bearer {self.access_token}",
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=30) as response:
-                body = response.read().decode("utf-8").strip()
-                return json.loads(body) if body else {}
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace").strip()
-            detail = f": {body}" if body else ""
-            raise RuntimeError(f"Microsoft Graph returned HTTP {exc.code}{detail}") from exc
+        return self._send("POST", path, payload)
+
+    def _send(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        for attempt in range(2):
+            req = self._build_request(method, path, payload)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as response:
+                    body = response.read().decode("utf-8").strip()
+                    return json.loads(body) if body else {}
+            except HTTPError as exc:
+                if exc.code == 401 and attempt == 0 and self._refresh():
+                    continue
+                body = exc.read().decode("utf-8", errors="replace").strip()
+                detail = f": {body}" if body else ""
+                raise RuntimeError(f"Microsoft Graph returned HTTP {exc.code}{detail}") from exc
+        raise RuntimeError("Microsoft Graph request failed after token refresh")
+
+    def _build_request(self, method: str, path: str, payload: dict[str, Any] | None) -> urllib.request.Request:
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Accept": "application/json",
+        }
+        data = None
+        if payload is not None:
+            data = json.dumps(payload).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        return urllib.request.Request(f"{GRAPH_ROOT}{path}", data=data, headers=headers, method=method)
+
+    def _refresh(self) -> bool:
+        if self.auth_mode != "delegated":
+            return False
+        self.access_token = refresh_access_token()
+        return True
 
 
 def _message_from_graph(item: dict[str, Any]) -> EmailMessage:

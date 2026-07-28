@@ -9,9 +9,12 @@
     "expected_payment_terms": true,
     "expected_missing_fields": {
       "per_part": [],
-      "quote_level": []
+      "quote_level": [
+        "coo",
+        "moq"
+      ]
     },
-    "notes": "Complete quote with 4 line items, now extracted as part-keyed rows: each price break carries its own part_number and per-part lead_time (ET-PCBA-MAIN-V2 500@$18.50/15bd, CAP-100UF-25V-UHE 5000@$0.12/7bd, IC-STM32F103C8T6 500@$2.85/10bd, RES-10K-SIP8 2000@$0.05/5bd). Every quoted part has a lead time so the per-part lead_time signal is true. Metadata captured: rfq_reference=ET-2026-0412, supplier_name=Precision PCB Technology Co., Ltd., quote_id=PPCB-Q-20260518, quote_valid_until=2026-06-18, incoterms=FOB Shenzhen. Tooling/Setup Fee USD 350.00 maps to nre. payment=30% deposit. Lead times are all in business days so no long-lead flagging.",
+    "notes": "Complete quote with 4 line items, now extracted as part-keyed rows: each price break carries its own part_number and per-part lead_time (ET-PCBA-MAIN-V2 500@$18.50/15bd, CAP-100UF-25V-UHE 5000@$0.12/7bd, IC-STM32F103C8T6 500@$2.85/10bd, RES-10K-SIP8 2000@$0.05/5bd). Every quoted part has a lead time so the per-part lead_time signal is true. Metadata captured: rfq_reference=ET-2026-0412, supplier_name=Precision PCB Technology Co., Ltd., quote_id=PPCB-Q-20260518, quote_valid_until=2026-06-18, incoterms=FOB Shenzhen. Tooling/Setup Fee USD 350.00 maps to nre. payment=30% deposit. Lead times are all in business days so no long-lead flagging. quote_level widened to cover coo/moq; these are verifiably absent from the thread. With no buyer RFQ in the thread the collection form defaults to the standard procurement set, so the absent coo/moq are genuinely outstanding.",
     "expected_price_break_rows": [
       [
         "ET-PCBA-MAIN-V2",
@@ -37,7 +40,8 @@
         2000,
         "0.05"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/02_incomplete_quote.eml",
@@ -77,10 +81,13 @@
         }
       ],
       "quote_level": [
-        "payment_terms"
+        "payment_terms",
+        "coo",
+        "moq"
       ]
     },
-    "notes": "Deliberately incomplete quote, 4 parts at different completeness. Per-part missing: WH-12P-ET has a unit price but Qty is TBD (kept as quantity 0; the volume confirmation goes into blocking_question, NOT into missing) and no lead time -> ['lead_time']; MECH-STANDOFF-M3-10 and CONN-DCJACK-5521 have no price and no lead time -> ['unit_price','lead_time'] (they have no row in price_breaks since they are unpriced); HS-3MM-BLK has a price but no lead time -> ['lead_time']. quote_level: payment_terms ('to be discussed'). NRE is explicitly 'No NRE or tooling fee at this stage' = answered, so it is NOT listed."
+    "notes": "Deliberately incomplete quote, 4 parts at different completeness. Per-part missing: WH-12P-ET has a unit price but Qty is TBD (kept as quantity 0; the volume confirmation goes into blocking_question, NOT into missing) and no lead time -> ['lead_time']; MECH-STANDOFF-M3-10 and CONN-DCJACK-5521 have no price and no lead time -> ['unit_price','lead_time'] (they have no row in price_breaks since they are unpriced); HS-3MM-BLK has a price but no lead time -> ['lead_time']. quote_level: payment_terms ('to be discussed'). NRE is explicitly 'No NRE or tooling fee at this stage' = answered, so it is NOT listed. CORRECTED action: supplier asks the buyer to confirm volume before quantity pricing can be set, which the prompt routes to blocking_question, and processor gives blocking questions precedence over chasing. quote_level widened to cover coo/moq; these are verifiably absent from the thread.",
+    "expected_action": "flag_buyer"
   },
   {
     "email_file": "data/sample_emails/03_supplier_followup.eml",
@@ -93,10 +100,12 @@
     "expected_missing_fields": {
       "per_part": [],
       "quote_level": [
-        "payment_terms"
+        "payment_terms",
+        "coo",
+        "moq"
       ]
     },
-    "notes": "Follow-up email recapping a prior submitted quote with TWO parts that have DIFFERENT lead times. Part-keyed rows: ET-WH-18C-26AWG 500@$7.80/20bd and ET-WH-6C-24AWG 500@$3.40/15bd. Both lead times must be kept per part (the old flat extractor only took the first match, 20bd, and silently dropped the 15bd value). Every quoted part has a lead time so the per-part lead_time signal is true. Lead times are in business days so no long-lead flagging. No payment terms mentioned in follow-up.",
+    "notes": "Follow-up email recapping a prior submitted quote with TWO parts that have DIFFERENT lead times. Part-keyed rows: ET-WH-18C-26AWG 500@$7.80/20bd and ET-WH-6C-24AWG 500@$3.40/15bd. Both lead times must be kept per part (the old flat extractor only took the first match, 20bd, and silently dropped the 15bd value). Every quoted part has a lead time so the per-part lead_time signal is true. Lead times are in business days so no long-lead flagging. No payment terms mentioned in follow-up. CORRECTED action: standalone reminder with no buyer RFQ in the thread, so required_fields is inferred from the supplier email alone and never includes payment_terms \u2014 nothing to chase given the inputs. quote_level widened to cover coo/moq; these are verifiably absent from the thread. With no buyer RFQ in the thread the collection form defaults to the standard procurement set, so the absent coo/moq are genuinely outstanding.",
     "expected_price_break_rows": [
       [
         "ET-WH-18C-26AWG",
@@ -110,7 +119,8 @@
         500,
         "3.40"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/04_long_lead_time.eml",
@@ -122,9 +132,12 @@
     "expected_payment_terms": true,
     "expected_missing_fields": {
       "per_part": [],
-      "quote_level": []
+      "quote_level": [
+        "coo",
+        "moq"
+      ]
     },
-    "notes": "Mixed BOM with 5 line items; all required fields present. PLT extracted as '32 WEEKS' (first/longest lead time). Long-lead parts flagged: IC-TPS65987DDFT (32wks) and CONN-BM14B-24DS (20wks), both on allocation. Payment=Net 30.",
+    "notes": "Mixed BOM with 5 line items; all required fields present. PLT extracted as '32 WEEKS' (first/longest lead time). Long-lead parts flagged: IC-TPS65987DDFT (32wks) and CONN-BM14B-24DS (20wks), both on allocation. Payment=Net 30. quote_level widened to cover coo/moq; these are verifiably absent from the thread. With no buyer RFQ in the thread the collection form defaults to the standard procurement set, so the absent coo/moq are genuinely outstanding.",
     "expected_price_break_rows": [
       [
         "IC-TPS65987DDFT",
@@ -156,7 +169,8 @@
         2000,
         "0.22"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/05_irrelevant_ignore.eml",
@@ -166,7 +180,8 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Promotional spam email. Classified as 'ignore'. No pricing, lead times, or real payment terms. The word 'cod' appears inside 'Use code:' in the promo text \u2014 the AI correctly ignores this as it is not a payment term. Missing fields correctly empty because ignore classification bypasses the check."
+    "notes": "Promotional spam email. Classified as 'ignore'. No pricing, lead times, or real payment terms. The word 'cod' appears inside 'Use code:' in the promo text \u2014 the AI correctly ignores this as it is not a payment term. Missing fields correctly empty because ignore classification bypasses the check.",
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e1.eml",
@@ -180,7 +195,8 @@
     "notes": "Thread 1 (off-shelf, XXX-1001): Buyer's outbound RFQ email. Should be classified as rfq_sent \u2014 tests that initial buyer outbound RFQs are detected. Quantities: 1000, 2000, 5000. Required fields: price_breaks, lead_time, coo, payment_terms, moq.",
     "thread_emails": [
       "data/sample_emails/thread_offshelf_01_e1.eml"
-    ]
+    ],
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e2.eml",
@@ -220,7 +236,8 @@
         5000,
         "0.60"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e3.eml",
@@ -235,7 +252,8 @@
       "data/sample_emails/thread_offshelf_01_e1.eml",
       "data/sample_emails/thread_offshelf_01_e2.eml",
       "data/sample_emails/thread_offshelf_01_e3.eml"
-    ]
+    ],
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e4.eml",
@@ -275,7 +293,8 @@
         5000,
         "0.60"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e1.eml",
@@ -293,7 +312,8 @@
     "notes": "Thread 2 (PCB assembly, A1-PCB-001): Buyer's outbound RFQ requesting both Quick Turn and Standard Turn pricing. Should be classified as rfq_sent \u2014 tests that initial buyer RFQs are detected.",
     "thread_emails": [
       "data/sample_emails/thread_pcb_01_e1.eml"
-    ]
+    ],
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e2.eml",
@@ -359,7 +379,8 @@
         500,
         "5.00"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e3.eml",
@@ -374,7 +395,8 @@
       "data/sample_emails/thread_pcb_01_e1.eml",
       "data/sample_emails/thread_pcb_01_e2.eml",
       "data/sample_emails/thread_pcb_01_e3.eml"
-    ]
+    ],
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e4.eml",
@@ -431,7 +453,8 @@
         500,
         "5.00"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/06_boxqty_adjusted.eml",
@@ -442,30 +465,33 @@
     "expected_payment_terms": true,
     "expected_missing_fields": {
       "per_part": [],
-      "quote_level": []
+      "quote_level": [
+        "moq"
+      ]
     },
     "expected_supplier_pending_question": false,
-    "notes": "Edge Case 1a (box qty): Supplier adjusted quantities from buyer's requested 500/1000/1500 to box-quantity multiples of 350 (350/700/1050 pcs), explaining the reason. Price breaks 350@$9.20, 700@$8.50, 1050@$7.90 should be extracted as complete \u2014 no unit_price in missing_fields. Tests that quantity-adjusted price breaks with explanation are not treated as incomplete.",
+    "notes": "Edge Case 1a (box qty): Supplier adjusted quantities from buyer's requested 500/1000/1500 to box-quantity multiples of 350 (350/700/1050 pcs), explaining the reason. Price breaks 350@$9.20, 700@$8.50, 1050@$7.90 should be extracted as complete \u2014 no unit_price in missing_fields. Tests that quantity-adjusted price breaks with explanation are not treated as incomplete. quote_level widened to cover coo/moq; these are verifiably absent from the thread. price_break_rows keyed on the buyer PN XXX-BW-100, not the manufacturer number BW-SENSOR-100.",
     "expected_price_break_rows": [
       [
-        "BW-SENSOR-100",
+        "XXX-BW-100",
         null,
         350,
         "9.20"
       ],
       [
-        "BW-SENSOR-100",
+        "XXX-BW-100",
         null,
         700,
         "8.50"
       ],
       [
-        "BW-SENSOR-100",
+        "XXX-BW-100",
         null,
         1050,
         "7.90"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/07_moq_adjusted.eml",
@@ -493,7 +519,8 @@
         2000,
         "0.38"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/08_supplier_question.eml",
@@ -506,11 +533,12 @@
       "per_part": [],
       "quote_level": [
         "payment_terms",
+        "moq",
         "nre"
       ]
     },
     "expected_supplier_pending_question": true,
-    "notes": "Edge Case 2 (supplier blocking question): supplier gave unit prices (100@$45.00, 500@$38.00) and PLT (25 business days) for ENC-CUSTOM-001 but needs the buyer to confirm mold tooling grade before finalizing NRE and payment terms. blocking_question captures the tooling-grade question. The part is line-complete (price + lead_time) so per_part is empty; payment_terms and nre are deferred pending buyer input -> quote_level ['payment_terms','nre']. (Replaces the old 'buyer_input_required' placeholder.)",
+    "notes": "Edge Case 2 (supplier blocking question): supplier gave unit prices (100@$45.00, 500@$38.00) and PLT (25 business days) for ENC-CUSTOM-001 but needs the buyer to confirm mold tooling grade before finalizing NRE and payment terms. blocking_question captures the tooling-grade question. The part is line-complete (price + lead_time) so per_part is empty; payment_terms and nre are deferred pending buyer input -> quote_level ['payment_terms','nre']. (Replaces the old 'buyer_input_required' placeholder.) quote_level widened to cover coo/moq; these are verifiably absent from the thread.",
     "expected_price_break_rows": [
       [
         "ENC-CUSTOM-001",
@@ -524,7 +552,8 @@
         500,
         "38.00"
       ]
-    ]
+    ],
+    "expected_action": "flag_buyer"
   },
   {
     "email_file": "data/sample_emails/thread_reminder_quote_e1.eml",
@@ -560,7 +589,8 @@
         10000,
         "0.26"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/thread_reminder_quote_e2.eml",
@@ -597,7 +627,8 @@
         10000,
         "0.26"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/10_buyer_rfq_standalone.eml",
@@ -607,7 +638,8 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Standalone buyer RFQ for Ethernet Transformer H1102NL. Buyer is requesting pricing \u2014 direction is buyer-to-supplier. Must be classified as rfq_sent. Tests the most basic rfq_sent case without thread context. Quantities: 2000, 5000, 10000. Required fields: price_breaks, lead_time, coo, payment_terms, moq."
+    "notes": "Standalone buyer RFQ for Ethernet Transformer H1102NL. Buyer is requesting pricing \u2014 direction is buyer-to-supplier. Must be classified as rfq_sent. Tests the most basic rfq_sent case without thread context. Quantities: 2000, 5000, 10000. Required fields: price_breaks, lead_time, coo, payment_terms, moq.",
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/11_payment_terms_tbd.eml",
@@ -642,7 +674,8 @@
         3000,
         "3.50"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/thread_complete_quote_e1.eml",
@@ -680,7 +713,8 @@
         20000,
         "0.10"
       ]
-    ]
+    ],
+    "expected_action": "chase_supplier"
   },
   {
     "email_file": "data/sample_emails/thread_complete_quote_e2.eml",
@@ -717,7 +751,8 @@
         20000,
         "0.10"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/13_buyer_followup_asking_price.eml",
@@ -727,7 +762,8 @@
     "expected_long_lead_time_parts": false,
     "expected_payment_terms": false,
     "expected_missing_fields": [],
-    "notes": "Buyer follow-up chasing a supplier who has not responded to an RFQ for SMA-JACK-PCB. Email explicitly mentions price, lead time, MOQ, COO, and payment terms \u2014 but as requested fields, not provided data. Tests that direction matters: buyer asking for quote data must be classified as ignore, not quote_received."
+    "notes": "Buyer follow-up chasing a supplier who has not responded to an RFQ for SMA-JACK-PCB. Email explicitly mentions price, lead time, MOQ, COO, and payment terms \u2014 but as requested fields, not provided data. Tests that direction matters: buyer asking for quote data must be classified as ignore, not quote_received.",
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_revised_quote_e1.eml",
@@ -763,7 +799,8 @@
         1000,
         "21.00"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/thread_revised_quote_e2.eml",
@@ -800,7 +837,8 @@
         1000,
         "23.00"
       ]
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
@@ -815,7 +853,8 @@
     "notes": "Off-shelf catalog screw RFQ (MFG feature). Buyer names AVL manufacturer NorthBolt Industrial and MFG part number NB-0832-1000-BOX. rfq_sent; the RFQ schema must capture the manufacturer part number.",
     "thread_emails": [
       "data/sample_emails/thread_offshelf_mfg_01_e1.eml"
-    ]
+    ],
+    "expected_action": "none"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_mfg_01_e2_match.eml",
@@ -826,16 +865,19 @@
     "expected_payment_terms": true,
     "expected_missing_fields": {
       "per_part": [],
-      "quote_level": []
+      "quote_level": [
+        "coo"
+      ]
     },
     "expected_price_break_tiers": null,
     "expected_mfg_part_number": "NB-0832-1000-BOX",
     "expected_mfg_confirmed": true,
-    "notes": "Off-shelf MFG feature - happy path. Supplier confirms the SAME manufacturer part number NB-0832-1000-BOX. No substitution; quote is complete and ready for review.",
+    "notes": "Off-shelf MFG feature - happy path. Supplier confirms the SAME manufacturer part number NB-0832-1000-BOX. No substitution; quote is complete and ready for review. quote_level widened to cover coo/moq; these are verifiably absent from the thread.",
     "thread_emails": [
       "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
       "data/sample_emails/thread_offshelf_mfg_01_e2_match.eml"
-    ]
+    ],
+    "expected_action": "ready_for_review"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_mfg_01_e2_sub.eml",
@@ -846,15 +888,413 @@
     "expected_payment_terms": true,
     "expected_missing_fields": {
       "per_part": [],
-      "quote_level": []
+      "quote_level": [
+        "coo"
+      ]
     },
     "expected_price_break_tiers": null,
     "expected_mfg_part_number": "NB-0832-1000-BOX",
     "expected_mfg_confirmed": false,
-    "notes": "Off-shelf MFG feature - substitution path. Supplier quotes a DIFFERENT manufacturer part number (FastGrip FG-832X100-BOX) instead of the requested NorthBolt NB-0832-1000-BOX. Must be detected as an MFG mismatch that blocks ready-for-review pending buyer confirmation.",
+    "notes": "Off-shelf MFG feature - substitution path. Supplier quotes a DIFFERENT manufacturer part number (FastGrip FG-832X100-BOX) instead of the requested NorthBolt NB-0832-1000-BOX. Must be detected as an MFG mismatch that blocks ready-for-review pending buyer confirmation. quote_level widened to cover coo/moq; these are verifiably absent from the thread.",
     "thread_emails": [
       "data/sample_emails/thread_offshelf_mfg_01_e1.eml",
       "data/sample_emails/thread_offshelf_mfg_01_e2_sub.eml"
+    ],
+    "expected_action": "flag_buyer"
+  },
+  {
+    "email_file": "data/sample_emails/lifecycle_0631_a1_rfq.eml",
+    "thread_emails": [
+      "data/sample_emails/lifecycle_0631_a1_rfq.eml"
+    ],
+    "expected_classification": "rfq_sent",
+    "expected_action": "none",
+    "expected_price_breaks": false,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": []
+    },
+    "expected_requested_tiers": [],
+    "expected_mfg_part_number": "NV-2403-DIN",
+    "notes": "Buyer RFQ, agent CC'd. Creates the collection form: quantities 250/500/1000, required = price_breaks, lead_time, moq, payment_terms, coo (NRE is NOT requested \u2014 off-shelf part). No supplier quote yet, so no action."
+  },
+  {
+    "email_file": "data/sample_emails/lifecycle_0631_a2_nova_price_only.eml",
+    "thread_emails": [
+      "data/sample_emails/lifecycle_0631_a1_rfq.eml",
+      "data/sample_emails/lifecycle_0631_a2_nova_price_only.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "chase_supplier",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_price_break_tiers": null,
+    "expected_mfg_part_number": "NV-2403-DIN",
+    "expected_missing_fields": {
+      "per_part": [
+        {
+          "part_number": "ET-DCDC-2403",
+          "missing": [
+            "lead_time"
+          ]
+        }
+      ],
+      "quote_level": [
+        "coo",
+        "moq",
+        "payment_terms"
+      ]
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-DCDC-2403",
+        null,
+        250,
+        "19.80"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        500,
+        "17.40"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        1000,
+        "15.25"
+      ]
+    ],
+    "notes": "Round 1: prices only. Supplier says lead time and commercial terms will follow, which is a promise, not a value \u2014 so all four stay missing. Chase should name exactly lead_time, coo, moq, payment_terms. The quote_level enum now covers coo and moq, so these gaps are expressed directly.",
+    "expected_chase_fields": [
+      "lead_time",
+      "coo",
+      "moq",
+      "payment_terms",
+      "mfg_part_number"
     ]
+  },
+  {
+    "email_file": "data/sample_emails/lifecycle_0631_a3_nova_partial.eml",
+    "thread_emails": [
+      "data/sample_emails/lifecycle_0631_a1_rfq.eml",
+      "data/sample_emails/lifecycle_0631_a2_nova_price_only.eml",
+      "data/sample_emails/lifecycle_0631_a3_nova_partial.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "chase_supplier",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_price_break_tiers": null,
+    "expected_mfg_part_number": "NV-2403-DIN",
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": [
+        "moq",
+        "payment_terms"
+      ]
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-DCDC-2403",
+        null,
+        250,
+        "19.80"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        500,
+        "17.40"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        1000,
+        "15.25"
+      ]
+    ],
+    "notes": "Round 2: lead time (12 business days, stated as applying to all breaks) and COO arrive; prices carry forward from round 1 and are NOT restated in this email. The point of this case is that the chase must drop lead_time and coo and ask only for moq and payment_terms \u2014 re-asking an answered field is the failure to catch. The quote_level enum now covers coo and moq, so these gaps are expressed directly.",
+    "expected_chase_fields": [
+      "moq",
+      "payment_terms",
+      "mfg_part_number"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/lifecycle_0631_a4_nova_complete.eml",
+    "thread_emails": [
+      "data/sample_emails/lifecycle_0631_a1_rfq.eml",
+      "data/sample_emails/lifecycle_0631_a2_nova_price_only.eml",
+      "data/sample_emails/lifecycle_0631_a3_nova_partial.eml",
+      "data/sample_emails/lifecycle_0631_a4_nova_complete.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "chase_supplier",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_price_break_tiers": null,
+    "expected_mfg_part_number": "NV-2403-DIN",
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": []
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-DCDC-2403",
+        null,
+        250,
+        "19.80"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        500,
+        "17.40"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        1000,
+        "15.25"
+      ]
+    ],
+    "notes": "Round 3: MOQ and payment terms close the form. Everything the buyer asked for is present across the four emails, so no reply \u2014 ready for human review. Tests that accumulation across four rounds actually completes. CORRECTED: Nova never states an MFG P/N in any round, and the buyer named an AVL (NV-2403-DIN), so processor chases for confirmation by design. Not ready_for_review.",
+    "expected_chase_fields": [
+      "mfg_part_number"
+    ]
+  },
+  {
+    "email_file": "data/sample_emails/lifecycle_0631_b2_halcyon_question.eml",
+    "thread_emails": [
+      "data/sample_emails/lifecycle_0631_a1_rfq.eml",
+      "data/sample_emails/lifecycle_0631_b2_halcyon_question.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "flag_buyer",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_price_break_tiers": null,
+    "expected_supplier_pending_question": true,
+    "expected_mfg_part_number": "NV-2403-DIN",
+    "expected_missing_fields": {
+      "per_part": [
+        {
+          "part_number": "ET-DCDC-2403",
+          "missing": [
+            "lead_time"
+          ]
+        }
+      ],
+      "quote_level": [
+        "moq"
+      ]
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-DCDC-2403",
+        null,
+        250,
+        "21.00"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        500,
+        "18.75"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        1000,
+        "16.90"
+      ]
+    ],
+    "notes": "Supplier asks the BUYER a question (conformal coating to IPC-A-610 Class 2?) that gates price, lead time and MOQ. Fields are genuinely missing, but the blocking question wins: the answer is the buyer's to give, so this must flag rather than chase. Asking the supplier for a lead time they already said they cannot give is the failure this case exists to catch. The quote_level enum now covers coo and moq, so these gaps are expressed directly."
+  },
+  {
+    "email_file": "data/sample_emails/lifecycle_0631_c2_ironbridge_substitute.eml",
+    "thread_emails": [
+      "data/sample_emails/lifecycle_0631_a1_rfq.eml",
+      "data/sample_emails/lifecycle_0631_c2_ironbridge_substitute.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "flag_buyer",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_price_break_tiers": null,
+    "expected_mfg_part_number": "NV-2403-DIN",
+    "expected_mfg_confirmed": false,
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": []
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-DCDC-2403",
+        null,
+        250,
+        "18.40"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        500,
+        "16.10"
+      ],
+      [
+        "ET-DCDC-2403",
+        null,
+        1000,
+        "14.05"
+      ]
+    ],
+    "notes": "Every requested field is present, so on completeness alone this would be ready_for_review. But the supplier quoted KP-2403-D against an AVL of NV-2403-DIN \u2014 a substitution only the buyer can accept. Must flag, and must NOT 'correct' the MFG P/N back to the requested one. price_break_rows are keyed on the BUYER part number per the quote_extraction contract, not on the substitute MPN."
+  },
+  {
+    "email_file": "data/sample_emails/multi_0644_m2_cobalt.eml",
+    "thread_emails": [
+      "data/sample_emails/multi_0644_m1_rfq.eml",
+      "data/sample_emails/multi_0644_m2_cobalt.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "ready_for_review",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_price_break_tiers": null,
+    "expected_requested_tiers": [],
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": []
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-LC-500K",
+        null,
+        100,
+        "88.00"
+      ],
+      [
+        "ET-LC-500K",
+        null,
+        250,
+        "79.50"
+      ],
+      [
+        "ET-LC-500K",
+        null,
+        500,
+        "71.00"
+      ]
+    ],
+    "notes": "First of three suppliers to reply into one conversation. Cobalt's quote is complete, so nothing is outstanding. Baseline for the two cases that follow."
+  },
+  {
+    "email_file": "data/sample_emails/multi_0644_m3_vantage.eml",
+    "thread_emails": [
+      "data/sample_emails/multi_0644_m1_rfq.eml",
+      "data/sample_emails/multi_0644_m2_cobalt.eml",
+      "data/sample_emails/multi_0644_m3_vantage.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "chase_supplier",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": true,
+    "expected_price_break_tiers": null,
+    "expected_requested_tiers": [],
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": [
+        "coo"
+      ]
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-LC-500K",
+        null,
+        100,
+        "92.40"
+      ],
+      [
+        "ET-LC-500K",
+        null,
+        250,
+        "83.00"
+      ],
+      [
+        "ET-LC-500K",
+        null,
+        500,
+        "74.80"
+      ]
+    ],
+    "expected_chase_fields": [
+      "coo"
+    ],
+    "notes": "CONTAMINATION TEST. Cobalt's quote is sitting in the thread above, at different prices for the same part and quantities. The extraction must return Vantage's three rows only and must not merge or replace them with Cobalt's. Vantage withheld COO, so that is the one gap \u2014 Cobalt's COO of Mexico must not be borrowed to fill it."
+  },
+  {
+    "email_file": "data/sample_emails/multi_0644_m4_redwood.eml",
+    "thread_emails": [
+      "data/sample_emails/multi_0644_m1_rfq.eml",
+      "data/sample_emails/multi_0644_m2_cobalt.eml",
+      "data/sample_emails/multi_0644_m3_vantage.eml",
+      "data/sample_emails/multi_0644_m4_redwood.eml"
+    ],
+    "expected_classification": "supplier_quote",
+    "expected_action": "chase_supplier",
+    "expected_price_breaks": true,
+    "expected_production_lead_time": true,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_price_break_tiers": null,
+    "expected_requested_tiers": [],
+    "expected_missing_fields": {
+      "per_part": [],
+      "quote_level": [
+        "payment_terms"
+      ]
+    },
+    "expected_price_break_rows": [
+      [
+        "ET-LC-500K",
+        null,
+        100,
+        "85.20"
+      ],
+      [
+        "ET-LC-500K",
+        null,
+        250,
+        "76.90"
+      ],
+      [
+        "ET-LC-500K",
+        null,
+        500,
+        "68.50"
+      ]
+    ],
+    "expected_chase_fields": [
+      "payment_terms"
+    ],
+    "notes": "CONTAMINATION TEST with two other quotes already in the thread. Redwood's three rows only. Redwood gave COO and MOQ but not payment terms; Cobalt's Net 30 and Vantage's Net 45 are both visible above and must not be used to fill that gap."
   }
 ]

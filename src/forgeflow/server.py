@@ -4,6 +4,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
+from forgeflow import evals
 from forgeflow.graph import GraphMailbox
 from forgeflow.processor import ingest_messages, process_pending
 from forgeflow.simulator import list_scenarios, run_manual_thread, run_scenario
@@ -33,6 +34,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(rfq_states(conn))
         elif path == "/api/simulator/scenarios":
             self._json(list_scenarios())
+        elif path == "/api/evals":
+            self._json(evals.list_runs())
+        elif path.startswith("/api/evals/"):
+            run = evals.load_run(path[len("/api/evals/"):])
+            if run is None:
+                self.send_error(404)
+            else:
+                self._json(run)
         elif path == "/api/health":
             self._json({"ok": True})
         else:

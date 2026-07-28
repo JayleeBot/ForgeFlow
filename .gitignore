@@ -14,3 +14,4 @@ logs/
 next-ui/node_modules/
 next-ui/.next/
 next-ui/out/
+runs/

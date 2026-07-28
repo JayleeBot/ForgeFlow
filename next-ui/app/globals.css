@@ -601,3 +601,58 @@ pre {
     max-height: none;
   }
 }
+
+.evalRunBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 24px 0;
+}
+
+.evalRunBar button {
+  font-weight: 600;
+}
+
+.evalRunBar .activeTab {
+  border-color: var(--text);
+  font-weight: 700;
+}
+
+.pillPass {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.pillFail {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.gradeBarTrack {
+  background: #e6eaef;
+  border-radius: 999px;
+  display: inline-block;
+  height: 8px;
+  margin-right: 8px;
+  overflow: hidden;
+  vertical-align: middle;
+  width: 140px;
+}
+
+.gradeBar {
+  background: #f59e0b;
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+}
+
+.gradeBarFull {
+  background: #059669;
+}
+
+.evalReason {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}

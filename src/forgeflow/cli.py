@@ -4,10 +4,9 @@ import argparse
 import json
 import os
 import time
-from dataclasses import asdict
 from pathlib import Path
 
-from forgeflow.agent import process_thread
+from forgeflow import evals
 from forgeflow.auth import device_login
 from forgeflow.config import load_env
 from forgeflow.graph import GraphMailbox
@@ -38,6 +37,9 @@ def main() -> None:
     sub.add_parser("list")
     evaluate = sub.add_parser("eval")
     evaluate.add_argument("case_file", nargs="?", default="data/eval_cases/eval_cases.json")
+    evaluate.add_argument("--save", help="write this run's grades to a JSON file")
+    evaluate.add_argument("--compare", help="diff against a previously saved run")
+    evaluate.add_argument("--workers", type=int, default=evals.DEFAULT_WORKERS)
     args = parser.parse_args()
 
     if args.cmd == "sync-local":
@@ -67,24 +69,25 @@ def main() -> None:
         with connect() as conn:
             print(json.dumps(recent_interactions(conn), indent=2))
     elif args.cmd == "eval":
-        print(json.dumps(run_eval(Path(args.case_file)), indent=2))
+        run_eval(args)
 
 
-def run_eval(path: Path) -> list[dict]:
-    cases = json.loads(path.read_text())
-    results = []
-    for case in cases:
-        files = case.get("thread_emails") or [case["email_file"]]
-        messages = [parse_email_file(Path(file)) for file in files]
-        result = process_thread(messages)
-        results.append({
-            "email_file": case["email_file"],
-            "expected_classification": case["expected_classification"],
-            "classification": result.classification,
-            "pass": result.classification == case["expected_classification"],
-            "result": asdict(result),
-        })
-    return results
+def run_eval(args) -> None:
+    cases = evals.load_cases(Path(args.case_file))
+    print(f"Running {len(cases)} cases across {args.workers} workers...\n", flush=True)
+    results = evals.run_evals(cases, workers=args.workers)
+    print(evals.format_report(results))
+
+    if args.save:
+        path = Path(args.save)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(evals.to_json(results), indent=2))
+        print(f"\nSaved run to {path}")
+
+    if args.compare:
+        baseline = json.loads(Path(args.compare).read_text())
+        print(f"\n--- vs {args.compare} ---")
+        print(evals.compare_runs(baseline, results))
 
 
 def watch_outlook(seconds: int) -> None:

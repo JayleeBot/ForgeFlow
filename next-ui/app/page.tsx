@@ -114,6 +114,25 @@ type SimulatorRun = {
   steps: SimulatorStep[];
 };
 
+type EvalGrade = { grader: string; passed: boolean; reason: string };
+
+type EvalCase = {
+  email_file: string;
+  error: string | null;
+  passed: boolean;
+  grades: EvalGrade[];
+};
+
+type EvalRunSummary = {
+  name: string;
+  modified: number;
+  total: number;
+  passed: number;
+  per_grader: Record<string, { passed: number; total: number }>;
+};
+
+type EvalRunDetail = EvalRunSummary & { cases: EvalCase[] };
+
 const API_BASE = process.env.NEXT_PUBLIC_FORGEFLOW_API_BASE || "http://127.0.0.1:8000";
 
 export default function DashboardPage() {
@@ -121,7 +140,9 @@ export default function DashboardPage() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedScenario, setSelectedScenario] = useState("");
   const [manualEmails, setManualEmails] = useState<string[]>([defaultEmail(1)]);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "playground">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "playground" | "evals">("dashboard");
+  const [evalRuns, setEvalRuns] = useState<EvalRunSummary[]>([]);
+  const [evalDetail, setEvalDetail] = useState<EvalRunDetail | null>(null);
   const [simulatorRun, setSimulatorRun] = useState<SimulatorRun | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,13 +169,30 @@ export default function DashboardPage() {
   }
 
   async function refresh() {
-    const [data, scenarioData] = await Promise.all([
+    const [data, scenarioData, runs] = await Promise.all([
       api<Interaction[]>("/api/interactions"),
-      api<Scenario[]>("/api/simulator/scenarios")
+      api<Scenario[]>("/api/simulator/scenarios"),
+      api<EvalRunSummary[]>("/api/evals").catch(() => [] as EvalRunSummary[])
     ]);
     setRows(data);
     setScenarios(scenarioData);
     setSelectedScenario((current) => current || scenarioData[0]?.id || "");
+    setEvalRuns(runs);
+    // Runs come back newest-first; show the latest unless one is already open.
+    const keep = runs.find((run) => run.name === evalDetail?.name);
+    const target = keep?.name || runs[0]?.name;
+    if (target) {
+      setEvalDetail(await api<EvalRunDetail>(`/api/evals/${target}`).catch(() => null));
+    }
+  }
+
+  async function selectEvalRun(name: string) {
+    setError(null);
+    try {
+      setEvalDetail(await api<EvalRunDetail>(`/api/evals/${name}`));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }
 
   async function runAction(label: string, fn: () => Promise<void>) {
@@ -211,6 +249,12 @@ export default function DashboardPage() {
         >
           Playground
         </button>
+        <button
+          className={activeTab === "evals" ? "activeTab" : ""}
+          onClick={() => setActiveTab("evals")}
+        >
+          Evals
+        </button>
       </nav>
 
       {(action || loading) && (
@@ -227,7 +271,13 @@ export default function DashboardPage() {
 
       {error && <section className="errorPanel">{error}</section>}
 
-      {activeTab === "playground" ? (
+      {activeTab === "evals" ? (
+        <EvalsTab
+          detail={evalDetail}
+          onSelect={selectEvalRun}
+          runs={evalRuns}
+        />
+      ) : activeTab === "playground" ? (
         <PlaygroundTab
           action={action}
           api={api}
@@ -473,6 +523,143 @@ function SimulatorStepDetails({ step }: { step: SimulatorStep }) {
   }
 
   return <p className="muted">No structured payload for this step.</p>;
+}
+
+function EvalsTab({
+  detail,
+  onSelect,
+  runs
+}: {
+  detail: EvalRunDetail | null;
+  onSelect: (name: string) => void;
+  runs: EvalRunSummary[];
+}) {
+  if (!runs.length) {
+    return (
+      <section className="tableWrap">
+        <p className="muted" style={{ padding: "1rem" }}>
+          No saved eval runs yet. Produce one with{" "}
+          <code>PYTHONPATH=src python3 -m forgeflow.cli eval --save runs/&lt;name&gt;.json</code>
+        </p>
+      </section>
+    );
+  }
+
+  const graders = detail ? Object.keys(detail.per_grader) : [];
+  const failing = detail?.cases.filter((c) => !c.passed) || [];
+
+  return (
+    <>
+      <section className="stats">
+        <div><span>{detail ? `${detail.passed}/${detail.total}` : "—"}</span>Cases passing</div>
+        <div>
+          <span>
+            {detail
+              ? (() => {
+                  const checks = Object.values(detail.per_grader);
+                  const ok = checks.reduce((sum, g) => sum + g.passed, 0);
+                  const all = checks.reduce((sum, g) => sum + g.total, 0);
+                  return `${ok}/${all}`;
+                })()
+              : "—"}
+          </span>
+          Checks passing
+        </div>
+        <div><span>{failing.length}</span>Failing cases</div>
+        <div><span>{runs.length}</span>Saved runs</div>
+      </section>
+
+      <section className="evalRunBar">
+        {runs.map((run) => (
+          <button
+            key={run.name}
+            className={detail?.name === run.name ? "activeTab" : ""}
+            onClick={() => onSelect(run.name)}
+            title={new Date(run.modified * 1000).toLocaleString()}
+          >
+            {run.name} <span className="muted">{run.passed}/{run.total}</span>
+          </button>
+        ))}
+      </section>
+
+      {detail && (
+        <section className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Grader</th>
+                <th>Passed</th>
+                <th>Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {graders.map((name) => {
+                const { passed, total } = detail.per_grader[name];
+                const pct = total ? Math.round((100 * passed) / total) : 0;
+                return (
+                  <tr key={name}>
+                    <td><code>{name}</code></td>
+                    <td>{passed}/{total}</td>
+                    <td>
+                      <div className="gradeBarTrack">
+                        <div
+                          className={pct === 100 ? "gradeBar gradeBarFull" : "gradeBar"}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="muted">{pct}%</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {detail && (
+        <section className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Case</th>
+                <th>Result</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.cases.map((evalCase) => {
+                const failed = evalCase.grades.filter((g) => !g.passed);
+                return (
+                  <tr key={evalCase.email_file}>
+                    <td>{evalCase.email_file.split("/").pop()}</td>
+                    <td>
+                      <span className={evalCase.passed ? "pill pillPass" : "pill pillFail"}>
+                        {evalCase.error ? "error" : evalCase.passed ? "pass" : "fail"}
+                      </span>
+                    </td>
+                    <td>
+                      {evalCase.error ? (
+                        <span className="evalReason">{evalCase.error}</span>
+                      ) : failed.length ? (
+                        failed.map((grade) => (
+                          <div key={grade.grader} className="evalReason">
+                            <strong>{grade.grader}</strong>: {grade.reason}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="muted">all {evalCase.grades.length} graders passed</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </>
+  );
 }
 
 function DashboardTab({

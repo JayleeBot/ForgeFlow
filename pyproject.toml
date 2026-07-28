@@ -12,7 +12,7 @@ dependencies = [
     "anthropic>=0.92",
 ]
 
-# Eval tooling is Promptfoo (Node CLI): `npx promptfoo@latest eval` / `view`.
+# Eval tooling is built in: `PYTHONPATH=src python3 -m forgeflow.cli eval`.
 
 [tool.setuptools]
 package-dir = {"" = "src"}

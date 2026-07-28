@@ -24,6 +24,7 @@ from pathlib import Path
 
 from forgeflow.agent import process_thread
 from forgeflow.parser import parse_email_file
+from forgeflow.processor import render_draft, respond
 
 DEFAULT_CASE_FILE = Path("data/eval_cases/eval_cases.json")
 DEFAULT_WORKERS = 6
@@ -41,10 +42,14 @@ class CaseResult:
     email_file: str
     grades: list[Grade] = field(default_factory=list)
     error: str | None = None
+    trace: dict | None = None  # input / action / output, for inspection
 
     @property
     def passed(self) -> bool:
         return self.error is None and all(g.passed for g in self.grades)
+
+
+ACTIONS = ("none", "chase_supplier", "flag_buyer", "ready_for_review")
 
 
 # ── Graders ────────────────────────────────────────────────────────────────────
@@ -230,6 +235,47 @@ def grade_price_break_values(result: dict, case: dict) -> Grade:
     return Grade("price_break_values", False, "; ".join(parts))
 
 
+def grade_action(result: dict, case: dict) -> Grade:
+    """Did the agent pick the right action?
+
+    This covers the expensive mistakes: taking a question meant for the buyer to
+    the supplier, or silently 'correcting' a substitute part back to the
+    requested one. The action is whichever response tool the agent chose.
+    """
+    if "expected_action" not in case:
+        return Grade("action", True, "skipped (no expected_action)")
+    expected, got = case["expected_action"], result.get("action")
+    return Grade("action", got == expected, f"got {got!r}, expected {expected!r}")
+
+
+def grade_draft_asks_expected(result: dict, case: dict) -> Grade:
+    """A chase email must ask for exactly the outstanding fields.
+
+    Graded against `expected_chase_fields` — a hand-written set of what this
+    follow-up should ask for — rather than against `missing_fields`, whose
+    schema cannot express `coo` or `moq` gaps. Over-asking wastes the
+    supplier's patience; under-asking costs another round trip.
+    """
+    if "expected_chase_fields" not in case:
+        return Grade("draft_asks_expected", True, "skipped (no expected_chase_fields)")
+    if result.get("action") != "chase_supplier":
+        return Grade("draft_asks_expected", True, f"skipped (action is {result.get('action')})")
+
+    expected = set(case["expected_chase_fields"])
+    asked = set(result.get("fields_requested") or [])
+    over, under = asked - expected, expected - asked
+
+    problems = []
+    if over:
+        problems.append(f"asks for {sorted(over)} which is not outstanding")
+    if under:
+        problems.append(f"fails to ask for {sorted(under)}")
+    return Grade(
+        "draft_asks_expected", not problems,
+        f"asked exactly {sorted(asked)}" if not problems else "; ".join(problems),
+    )
+
+
 GRADERS = [
     grade_classification,
     grade_quote_signals,
@@ -238,19 +284,50 @@ GRADERS = [
     grade_service_tiers,
     grade_mfg,
     grade_price_break_values,
+    grade_action,
+    grade_draft_asks_expected,
 ]
 
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
 
 def run_case(case: dict) -> CaseResult:
+    """One full agent run: extract from the thread, then draft the reply."""
     files = case.get("thread_emails") or [case["email_file"]]
     try:
         messages = [parse_email_file(Path(f)) for f in files]
-        result = asdict(process_thread(messages))
+        processing = process_thread(messages)
+        action = respond(messages, processing)
+        draft = render_draft(action)
+        result = asdict(processing)
+        # Graders see the agent's chosen action and copy alongside the extraction.
+        result["draft_reply"] = draft
+        result["action"] = action.action
+        result["fields_requested"] = action.fields_requested
     except Exception as exc:  # a crashed case is a failed case, not a dead run
         return CaseResult(case["email_file"], error=f"{type(exc).__name__}: {exc}")
-    return CaseResult(case["email_file"], [grader(result, case) for grader in GRADERS])
+
+    latest = messages[-1]
+    trace = {
+        "input": {
+            "thread_length": len(messages),
+            "latest_subject": latest.subject,
+            "latest_sender": latest.sender,
+            "latest_body": latest.body_text,
+        },
+        "action": result["action"],
+        "fields_requested": result["fields_requested"],
+        "output": {
+            "classification": processing.classification,
+            "draft_reply": draft,
+            "extraction": asdict(processing),
+        },
+    }
+    return CaseResult(
+        case["email_file"],
+        [grader(result, case) for grader in GRADERS],
+        trace=trace,
+    )
 
 
 def run_evals(cases: list[dict], workers: int = DEFAULT_WORKERS) -> list[CaseResult]:
@@ -264,8 +341,54 @@ def load_cases(path: Path = DEFAULT_CASE_FILE) -> list[dict]:
 
 # ── Reporting ──────────────────────────────────────────────────────────────────
 
-def format_report(results: list[CaseResult]) -> str:
+def format_trace(res: CaseResult) -> str:
+    """Input, what the agent did, and what it produced — for eyeballing a case."""
+    if not res.trace:
+        return f"{res.email_file}\n  (no trace: {res.error})"
+    trace = res.trace
+    body = trace["input"]["latest_body"]
+    snippet = body if len(body) <= 700 else body[:700] + "\n  …"
+    quote = (trace["output"]["extraction"].get("supplier_quote") or {})
+    rows = quote.get("price_breaks") or []
+    row_lines = [
+        f"      {r.get('part_number')}"
+        + (f" [{r['service_tier']}]" if r.get("service_tier") else "")
+        + f"  {r.get('quantity')} @ {r.get('unit_price')}"
+        + (f"  lead {r['lead_time']}" if r.get("lead_time") else "")
+        for r in rows
+    ]
+    missing = quote.get("missing_fields") or {}
+    draft = trace["output"]["draft_reply"]
+
+    out = [
+        "=" * 78,
+        res.email_file,
+        "-" * 78,
+        f"  INPUT   thread of {trace['input']['thread_length']}, latest from {trace['input']['latest_sender']}",
+        f"          subject: {trace['input']['latest_subject']}",
+        *(f"          | {line}" for line in snippet.splitlines()),
+        "",
+        f"  ACTION  {trace['action']}   (classified {trace['output']['classification']})",
+        "",
+        "  OUTPUT  price rows:",
+        *(row_lines or ["      (none)"]),
+        f"          missing quote-level: {missing.get('quote_level', [])}",
+        f"          missing per-part:    {[(p.get('part_number'), p.get('missing')) for p in missing.get('per_part', [])]}",
+        "          reply drafted:",
+        *([f"      | {line}" for line in draft.splitlines()] if draft else ["      (no reply)"]),
+    ]
+    fails = [g for g in res.grades if not g.passed]
+    if fails:
+        out += ["", "  FAILED  " + ", ".join(g.grader for g in fails)]
+        out += [f"          {g.grader}: {g.reason}" for g in fails]
+    return "\n".join(out)
+
+
+def format_report(results: list[CaseResult], detail: bool = False) -> str:
     lines: list[str] = []
+    if detail:
+        lines += [format_trace(r) for r in results]
+        lines.append("")
     per_grader: dict[str, list[int]] = {g.__name__: [0, 0] for g in GRADERS}
 
     for res in results:

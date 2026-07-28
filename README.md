@@ -44,9 +44,8 @@ flowchart TD
 
 The corresponding prompts live in:
 
-- `src/forgeflow/prompts/rfq_extraction.txt` — RFQ Schema Agent
-- `src/forgeflow/prompts/quote_extraction.txt` — Supplier Extraction Agent
-- `src/forgeflow/prompts/rfq_action.txt` — RFQ Action Agent
+- `src/forgeflow/prompts/extraction.txt` — Extraction Agent (classification + RFQ form + quote)
+- `src/forgeflow/prompts/response.txt` — Response Agent (picks the action and writes the copy)
 
 ## What ForgeFlow extracts from supplier quote emails
 

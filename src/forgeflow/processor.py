@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from forgeflow.agent import ProcessingResult, SupplierQuoteData, process_thread
+from forgeflow.agent import ProcessingResult, ResponseAction, decide_response, process_thread
 from forgeflow.models import EmailMessage
 from forgeflow.store import (
     connect,
@@ -25,7 +25,7 @@ def process_pending() -> int:
             try:
                 context = thread_messages_through(conn, message.thread_id, message.sent_at)
                 result = process_thread(context)
-                draft = draft_reply(message, result)
+                draft = draft_reply(context, result)
                 mark_processed(conn, message.message_id, result, draft)
                 persist_processing_state(conn, message, result, draft)
                 processed += 1
@@ -34,99 +34,21 @@ def process_pending() -> int:
     return processed
 
 
-def draft_reply(message: EmailMessage, result: ProcessingResult) -> str | None:
-    quote = result.supplier_quote
-    if result.classification not in ("supplier_quote", "supplier_reminder") or quote is None:
-        return None
-    if quote.blocking_question:
-        return f"[FLAG FOR BUYER]\n\nSupplier needs input before ForgeFlow can complete this quote:\n{quote.blocking_question}"
-
-    mismatch = _mfg_mismatch(quote, result)
-    if mismatch:
-        expected, quoted = mismatch
-        return (
-            "[FLAG FOR BUYER]\n\n"
-            "Supplier quoted a different manufacturer part number than the RFQ specified — "
-            "please confirm whether this substitute is acceptable before proceeding:\n"
-            f"  RFQ specified:    {expected}\n"
-            f"  Supplier quoted:  {quoted}"
-        )
-
-    missing = _missing_required_items(quote, result)
-    if not missing:
-        return None
-
-    return "\n".join([
-        f"Subject: Re: {message.subject}",
-        "",
-        "Hi,",
-        "",
-        "Thanks for the quote. Could you please confirm the following missing details?",
-        *missing,
-        "",
-        "Best,",
-        "ForgeFlow",
-    ])
+def respond(messages: list[EmailMessage], result: ProcessingResult) -> ResponseAction:
+    """Ask the response agent what to do about this thread."""
+    if result.classification not in ("supplier_quote", "supplier_reminder"):
+        return ResponseAction(action="none", note="No supplier reply to act on.")
+    return decide_response(messages, result)
 
 
-def _norm(tier: str | None) -> str:
-    return (tier or "").strip().lower()
-
-
-def _missing_required_items(quote: SupplierQuoteData, result: ProcessingResult) -> list[str]:
-    required = (
-        result.rfq_requirements.required_fields
-        if result.rfq_requirements
-        else ["price_breaks", "lead_time", "payment_terms", "nre"]
-    )
-    tiers = result.rfq_requirements.requested_tiers if result.rfq_requirements else []
-    missing: list[str] = []
-
-    if "price_breaks" in required:
-        if tiers:
-            for tier in tiers:
-                if not any(_norm(row.service_tier) == _norm(tier) for row in quote.price_breaks):
-                    missing.append(f"- {tier}: price_breaks")
-        elif not quote.price_breaks:
-            missing.append("- price_breaks")
-
-    if "lead_time" in required:
-        for part in quote.missing_fields.per_part:
-            if "lead_time" in part.missing:
-                label = f"{part.part_number} ({part.service_tier})" if part.service_tier else part.part_number
-                missing.append(f"- {label}: lead_time")
-        if tiers:
-            for tier in tiers:
-                rows = [row for row in quote.price_breaks if _norm(row.service_tier) == _norm(tier)]
-                if rows and not any(row.lead_time for row in rows):
-                    missing.append(f"- {tier}: lead_time")
-        elif quote.price_breaks and not any(row.lead_time for row in quote.price_breaks):
-            missing.append("- lead_time")
-
-    quote_level_values = {
-        "coo": quote.coo,
-        "payment_terms": quote.payment_terms,
-        "moq": quote.moq,
-        "nre": quote.nre,
-    }
-    for field in ("coo", "payment_terms", "moq", "nre"):
-        if field in required and not quote_level_values[field]:
-            missing.append(f"- {field}")
-
-    # MFG part number is presence-driven: required only when the buyer named one.
-    # A supplier who quoted a DIFFERENT number is handled as a blocking mismatch, not "missing".
-    buyer_mfg = result.rfq_requirements.mfg_part_number if result.rfq_requirements else None
-    if buyer_mfg and not quote.mfg_part_number:
-        missing.append("- mfg_part_number")
-
-    return list(dict.fromkeys(missing))
-
-
-def _mfg_mismatch(quote: SupplierQuoteData, result: ProcessingResult) -> tuple[str, str] | None:
-    """Return (expected, quoted) when the buyer named an MFG part number and the
-    supplier quoted a different one — a substitution the buyer must review."""
-    expected = result.rfq_requirements.mfg_part_number if result.rfq_requirements else None
-    quoted = quote.mfg_part_number
-    if expected and quoted and _norm(expected) != _norm(quoted):
-        return expected, quoted
+def render_draft(action: ResponseAction) -> str | None:
+    """Flatten the agent's decision into the reply text the store keeps."""
+    if action.action == "chase_supplier":
+        return "\n".join([f"Subject: {action.subject}", "", action.body or ""])
+    if action.action == "flag_buyer":
+        return f"[FLAG FOR BUYER]\n\n{action.body or ''}"
     return None
+
+
+def draft_reply(messages: list[EmailMessage], result: ProcessingResult) -> str | None:
+    return render_draft(respond(messages, result))

@@ -1,23 +1,23 @@
-"""Run ForgeFlow's RFQ triage as a Claude Managed Agent.
+"""Run ForgeFlow's RFQ triage as a Claude Managed Agent — coordinator + subagent.
 
-Architecture (host-side custom tools + host-side poller):
+Shape:
 
-  * Anthropic hosts the agent loop in a per-session container. The agent's job
-    is RFQ triage: read an email thread, decide whether a supplier follow-up is
-    needed, and either draft/send a reply or flag the buyer.
-  * ForgeFlow keeps ownership of the mailbox. `GraphMailbox` already fetches mail
-    and auto-refreshes the delegated Outlook token, so the token NEVER enters the
-    Anthropic sandbox. The agent asks for a reply via the `send_reply` custom
-    tool; this process executes it against Microsoft Graph.
+    Coordinator (ForgeFlow RFQ Coordinator)
+      ├─ read_comparison_table   host-side: what we already have for this RFQ
+      ├─ record_extraction       host-side: writes this supplier's state into the table
+      └─ delegates to ──► Reply agent (subagent, its own thread)
+                            └─ send_reply   host-side: Microsoft Graph
 
-Usage:
+Anthropic hosts the agent loop and the subagent threads. ForgeFlow keeps the mailbox and
+the comparison table: every tool that touches either runs in THIS process, so the Outlook
+token and the database never enter the sandbox. Subagent tool calls are cross-posted to
+the primary thread, so one event stream drives everything.
 
-    python -m forgeflow.managed_agent setup     # one-time: create env + agent
-    python -m forgeflow.managed_agent run        # poll inbox and respond
-
-`setup` stores FORGEFLOW_AGENT_ID / FORGEFLOW_ENV_ID in .env. Re-run only when
-you want to change the agent's config (each `agents.create` makes a new agent —
-to tweak an existing one, use `agents.update`, not `setup`).
+    python -m forgeflow.managed_agent setup     # one-time: environment + both agents
+    python -m forgeflow.managed_agent deploy    # push prompt/tool changes to both
+    python -m forgeflow.managed_agent health
+    python -m forgeflow.managed_agent test [message_id]
+    python -m forgeflow.managed_agent run       # poll the inbox
 """
 from __future__ import annotations
 
@@ -32,55 +32,77 @@ import anthropic
 from forgeflow.config import load_env, set_env_values
 from forgeflow.graph import GraphMailbox
 from forgeflow.models import EmailMessage
+from forgeflow.store import connect, rfq_states
 
 MODEL = {"id": "claude-opus-5", "effort": "xhigh"}
 SEEN_PATH = Path("data/managed_agent_seen.json")
 POLL_INTERVAL_SECONDS = 60
+_PROMPTS = Path(__file__).parent / "prompts"
 
-SYSTEM_PROMPT = """\
-You are ForgeFlow's RFQ triage agent for a procurement team. The buyer CCs you on
-outbound RFQ emails; suppliers reply with quotes. You read one email thread at a
-time and take exactly one action.
 
-Workflow:
-1. Identify the latest email in the thread.
-2. If it is a supplier quote or reminder, check whether it contains the required
-   fields: price breaks, production lead time, MOQ, payment terms, NRE, country
-   of origin, and the manufacturer part number (MFG P/N) matching the RFQ.
-3. Choose ONE action:
-   - Missing required fields -> call `send_reply` with a short, polite follow-up
-     asking ONLY for the specific missing fields.
-   - Supplier quoted a different MFG P/N than the RFQ, or asks the buyer a
-     question -> call `send_reply` with a message that begins "[FLAG FOR BUYER]"
-     and clearly states what needs the buyer's decision. Do NOT ask the supplier.
-   - All required fields present, nothing blocking -> do not reply; briefly state
-     the quote is ready for human review.
+def _prompt(name: str) -> str:
+    return (_PROMPTS / name).read_text(encoding="utf-8")
 
-Rules:
-- Extract only what is actually present in the thread. Never invent values.
-- Keep replies concise and professional. Sign as "ForgeFlow".
-- Take at most one `send_reply` action per thread.
-"""
+
+# ── Host-side tools ───────────────────────────────────────────────────────────
+
+READ_TABLE_TOOL = {
+    "type": "custom",
+    "name": "read_comparison_table",
+    "description": (
+        "Return the quotes collected so far for an RFQ, across every supplier and every "
+        "earlier round. Call this before deciding what is outstanding — a field answered "
+        "in an earlier round is already answered."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "rfq_reference": {
+                "type": "string",
+                "description": "The RFQ reference or thread subject to look up. Pass the "
+                               "buyer's reference when the thread states one.",
+            },
+        },
+        "required": ["rfq_reference"],
+    },
+}
+
+RECORD_TOOL = {
+    "type": "custom",
+    "name": "record_extraction",
+    "description": (
+        "Write this supplier's current state into the comparison table. Send the complete "
+        "picture for this supplier, not only what the newest email added."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "supplier_name": {"type": "string"},
+            "classification": {
+                "type": "string",
+                "enum": ["rfq_sent", "supplier_quote", "supplier_reminder", "ignore"],
+            },
+            "extraction": {
+                "type": "object",
+                "description": "The collection form and this supplier's quote, as extracted.",
+            },
+        },
+        "required": ["supplier_name", "classification", "extraction"],
+    },
+}
 
 SEND_REPLY_TOOL = {
     "type": "custom",
     "name": "send_reply",
     "description": (
-        "Reply to a message in the email thread. Provide the message_id of the "
-        "email you are replying to and the reply body text. Use this only when a "
-        "supplier follow-up is needed or the buyer must be flagged."
+        "Reply to a message in the email thread. Give the message_id being replied to and "
+        "the body text."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "message_id": {
-                "type": "string",
-                "description": "The message_id of the email being replied to.",
-            },
-            "body_text": {
-                "type": "string",
-                "description": "The reply body to send.",
-            },
+            "message_id": {"type": "string", "description": "The message_id being replied to."},
+            "body_text": {"type": "string", "description": "The reply body to send."},
         },
         "required": ["message_id", "body_text"],
     },
@@ -91,60 +113,248 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic()
 
 
-def setup() -> None:
-    """Create the environment and agent once; persist their IDs to .env.
+# ── Provisioning ──────────────────────────────────────────────────────────────
 
-    Refuses to run if IDs already exist — creating a second agent orphans the
-    first. Use `deploy` to push config changes to the existing agent.
+def _reply_agent_config() -> dict:
+    return {
+        "name": "ForgeFlow Reply Agent",
+        "model": MODEL,
+        "system": _prompt("reply_agent.txt"),
+        "tools": [SEND_REPLY_TOOL],
+    }
+
+
+def _coordinator_config(reply_agent_id: str) -> dict:
+    """Typed args for agents.create/update.
+
+    `multiagent` is not a typed parameter in anthropic 0.96.0, so it rides in
+    extra_body — see _multiagent_body(). Drop that once the SDK types it.
     """
+    return {
+        "name": "ForgeFlow RFQ Coordinator",
+        "model": MODEL,
+        "system": _prompt("coordinator.txt"),
+        "tools": [READ_TABLE_TOOL, RECORD_TOOL],
+    }
+
+
+def _multiagent_body(reply_agent_id: str) -> dict:
+    return {"extra_body": {"multiagent": {"type": "coordinator", "agents": [reply_agent_id]}}}
+
+
+def _roster(agent) -> list:
+    """The subagent roster, read defensively — `multiagent` is untyped in this SDK."""
+    ma = getattr(agent, "multiagent", None)
+    if ma is None and hasattr(agent, "model_extra"):
+        ma = (agent.model_extra or {}).get("multiagent")
+    if ma is None:
+        return []
+    agents = getattr(ma, "agents", None) if not isinstance(ma, dict) else ma.get("agents")
+    return list(agents or [])
+
+
+def _reachable(fetch, resource_id: str | None):
+    """An ID in .env is only useful if the current API key can actually see it.
+
+    Agents and environments are workspace-scoped, so switching keys silently
+    orphans every ID from the previous workspace.
+    """
+    if not resource_id:
+        return None
+    try:
+        return fetch(resource_id)
+    except anthropic.NotFoundError:
+        print(f"  {resource_id} is not visible to this API key — provisioning a replacement.")
+        return None
+
+
+def setup() -> None:
+    """Create the environment and both agents; persist their IDs to .env."""
     client = _client()
-    if os.environ.get("FORGEFLOW_AGENT_ID") or os.environ.get("FORGEFLOW_ENV_ID"):
-        raise SystemExit(
-            "FORGEFLOW_AGENT_ID / FORGEFLOW_ENV_ID are already set in .env.\n"
-            "Use `python -m forgeflow.managed_agent deploy` to update the existing "
-            "agent, or clear those keys first to provision a new one."
+
+    env_id = os.environ.get("FORGEFLOW_ENV_ID")
+    if not _reachable(lambda i: client.beta.environments.retrieve(i), env_id):
+        env_id = client.beta.environments.create(
+            name="forgeflow-rfq",
+            config={"type": "cloud", "networking": {"type": "unrestricted"}},
+        ).id
+        print(f"Created environment {env_id}")
+
+    reply_id = os.environ.get("FORGEFLOW_REPLY_AGENT_ID")
+    if _reachable(lambda i: client.beta.agents.retrieve(i), reply_id):
+        print(f"Reusing reply subagent {reply_id}")
+    else:
+        reply = client.beta.agents.create(**_reply_agent_config())
+        reply_id = reply.id
+        print(f"Created reply subagent {reply_id} (v{reply.version})")
+
+    coordinator_id = os.environ.get("FORGEFLOW_AGENT_ID")
+    current = _reachable(lambda i: client.beta.agents.retrieve(i), coordinator_id)
+    if current:
+        coordinator = client.beta.agents.update(
+            coordinator_id, version=current.version,
+            **_coordinator_config(reply_id), **_multiagent_body(reply_id)
         )
-    env = client.beta.environments.create(
-        name="forgeflow-rfq",
-        config={"type": "cloud", "networking": {"type": "unrestricted"}},
-    )
-    agent = client.beta.agents.create(
-        name="ForgeFlow RFQ Agent",
-        model=MODEL,
-        system=SYSTEM_PROMPT,
-        tools=[SEND_REPLY_TOOL],
-    )
-    set_env_values({"FORGEFLOW_AGENT_ID": agent.id, "FORGEFLOW_ENV_ID": env.id})
-    print(f"Created environment {env.id} and agent {agent.id} (v{agent.version}).")
-    print("Saved FORGEFLOW_AGENT_ID and FORGEFLOW_ENV_ID to .env.")
+        print(f"Promoted {coordinator.id} to coordinator (v{coordinator.version})")
+    else:
+        coordinator = client.beta.agents.create(
+            **_coordinator_config(reply_id), **_multiagent_body(reply_id)
+        )
+        print(f"Created coordinator {coordinator.id} (v{coordinator.version})")
+
+    set_env_values({
+        "FORGEFLOW_AGENT_ID": coordinator.id,
+        "FORGEFLOW_REPLY_AGENT_ID": reply_id,
+        "FORGEFLOW_ENV_ID": env_id,
+    })
+    print("Saved FORGEFLOW_AGENT_ID / FORGEFLOW_REPLY_AGENT_ID / FORGEFLOW_ENV_ID to .env.")
 
 
 def deploy() -> None:
-    """Push the model / system prompt / tools in this file to the existing agent.
-
-    Each update creates a new immutable agent version; running sessions keep the
-    version they were created with.
-    """
+    """Push the prompts and tool definitions in this repo to both live agents."""
     client = _client()
-    agent_id = os.environ.get("FORGEFLOW_AGENT_ID")
-    if not agent_id:
-        raise SystemExit("No FORGEFLOW_AGENT_ID in .env — run `setup` first.")
-    current = client.beta.agents.retrieve(agent_id)
-    agent = client.beta.agents.update(
-        agent_id,
-        version=current.version,  # optimistic lock: 409 if someone else updated
-        model=MODEL,
-        system=SYSTEM_PROMPT,
-        tools=[SEND_REPLY_TOOL],
-    )
-    print(f"Updated agent {agent.id}: v{current.version} -> v{agent.version}")
-    print(f"  model: {agent.model}")
+    coordinator_id = os.environ.get("FORGEFLOW_AGENT_ID")
+    reply_id = os.environ.get("FORGEFLOW_REPLY_AGENT_ID")
+    if not coordinator_id or not reply_id:
+        raise SystemExit("Run `setup` first — both agent IDs must be in .env.")
 
+    reply_current = client.beta.agents.retrieve(reply_id)
+    reply = client.beta.agents.update(
+        reply_id, version=reply_current.version, **_reply_agent_config()
+    )
+    print(f"Reply subagent {reply.id}: v{reply_current.version} -> v{reply.version}")
+
+    coord_current = client.beta.agents.retrieve(coordinator_id)
+    coordinator = client.beta.agents.update(
+        coordinator_id, version=coord_current.version,
+        **_coordinator_config(reply_id), **_multiagent_body(reply_id)
+    )
+    print(f"Coordinator {coordinator.id}: v{coord_current.version} -> v{coordinator.version}")
+    print(f"  roster: {_roster(coordinator)}")
+
+
+# ── Host-side tool execution ──────────────────────────────────────────────────
+
+def _autosend() -> bool:
+    return os.environ.get("FORGEFLOW_MANAGED_AGENT_AUTOSEND", "").lower() in ("1", "true", "yes")
+
+
+def _run_read_table(tool_input: dict) -> str:
+    reference = (tool_input.get("rfq_reference") or "").strip().lower()
+    with connect() as conn:
+        states = rfq_states(conn)
+    if reference:
+        matched = [s for s in states
+                   if reference in (s.get("subject") or "").lower()
+                   or reference in (s.get("id") or "").lower()]
+        states = matched or states
+    if not states:
+        return "The comparison table is empty — nothing has been collected for this RFQ yet."
+    return json.dumps(states[:5], indent=2, default=str)
+
+
+def _run_record(tool_input: dict) -> str:
+    supplier = tool_input.get("supplier_name") or "unknown supplier"
+    RECORDED.append(tool_input)
+    return f"Recorded {supplier} into the comparison table."
+
+
+def _run_send_reply(mailbox: GraphMailbox | None, tool_input: dict) -> str:
+    message_id = tool_input.get("message_id")
+    body = tool_input.get("body_text") or ""
+    if not message_id:
+        return "No message_id was given, so nothing was sent. Ask the coordinator for it."
+    if not _autosend():
+        print(f"\n[DRAFT -> {message_id}] (not sent; set FORGEFLOW_MANAGED_AGENT_AUTOSEND=true)\n{body}\n")
+        return "Draft recorded. Not sent — autosend is disabled."
+    mailbox.reply(message_id, body)
+    print(f"\n[SENT -> {message_id}]\n")
+    return "Reply sent."
+
+
+RECORDED: list[dict] = []
+
+TOOL_RUNNERS = {
+    "read_comparison_table": lambda mb, i: _run_read_table(i),
+    "record_extraction": lambda mb, i: _run_record(i),
+    "send_reply": lambda mb, i: _run_send_reply(mb, i),
+}
+
+
+# ── Session ───────────────────────────────────────────────────────────────────
+
+def _format_thread(messages: list[EmailMessage]) -> str:
+    ordered = sorted(messages, key=lambda m: m.sent_at)
+    parts = [f"RFQ email thread (subject: {ordered[-1].subject}):", ""]
+    for msg in ordered:
+        parts += [f"--- message_id: {msg.message_id}", f"From: {msg.sender}",
+                  f"Sent: {msg.sent_at.isoformat()}", "", msg.body_text, ""]
+    parts.append("Handle the latest message in this thread.")
+    return "\n".join(parts)
+
+
+def _run_session(client, agent_id: str, env_id: str, mailbox, thread_text: str) -> None:
+    session = client.beta.sessions.create(
+        agent=agent_id, environment_id=env_id, title="RFQ thread triage",
+    )
+    print(f"[trace] https://platform.claude.com/workspaces/default/sessions/{session.id}")
+
+    with client.beta.sessions.events.stream(session_id=session.id) as stream:
+        client.beta.sessions.events.send(
+            session_id=session.id,
+            events=[{"type": "user.message",
+                     "content": [{"type": "text", "text": thread_text}]}],
+        )
+        for event in stream:
+            kind = event.type
+            if kind == "agent.message":
+                for block in event.content:
+                    if block.type == "text":
+                        print(block.text, end="", flush=True)
+            elif kind == "session.thread_created":
+                print(f"\n[delegated to {getattr(event, 'agent_name', 'subagent')}]")
+            elif kind == "agent.thread_message_sent":
+                print(f"\n[-> {getattr(event, 'to_agent_name', 'subagent')}]")
+            elif kind == "agent.thread_message_received":
+                print(f"\n[<- {getattr(event, 'from_agent_name', 'subagent')}]")
+            elif kind == "agent.custom_tool_use":
+                runner = TOOL_RUNNERS.get(event.name)
+                result = (runner(mailbox, event.input) if runner
+                          else f"Unknown tool {event.name!r}.")
+                reply = {
+                    "type": "user.custom_tool_result",
+                    "custom_tool_use_id": event.id,
+                    "content": [{"type": "text", "text": result}],
+                }
+                # Subagent tool calls are cross-posted here; echo the thread they came from.
+                thread_id = getattr(event, "session_thread_id", None)
+                if thread_id:
+                    reply["session_thread_id"] = thread_id
+                client.beta.sessions.events.send(session_id=session.id, events=[reply])
+            elif kind == "session.status_idle":
+                if getattr(event.stop_reason, "type", None) == "requires_action":
+                    continue
+                break
+            elif kind == "session.status_terminated":
+                break
+
+    # Sessions stay in the Console so their traces can be read. Archiving hides
+    # them behind the "Active" filter, so it is opt-in rather than automatic.
+    if os.environ.get("FORGEFLOW_ARCHIVE_SESSIONS", "").lower() in ("1", "true", "yes"):
+        # The stream reports idle slightly before the queryable status catches up.
+        for _ in range(10):
+            if client.beta.sessions.retrieve(session_id=session.id).status != "running":
+                client.beta.sessions.archive(session_id=session.id)
+                break
+            time.sleep(0.2)
+    else:
+        print(f"\n[session kept] {session.id} — visible in the Console")
+
+
+# ── Polling ───────────────────────────────────────────────────────────────────
 
 def _load_seen() -> set[str]:
-    if SEEN_PATH.exists():
-        return set(json.loads(SEEN_PATH.read_text()))
-    return set()
+    return set(json.loads(SEEN_PATH.read_text())) if SEEN_PATH.exists() else set()
 
 
 def _save_seen(seen: set[str]) -> None:
@@ -152,81 +362,7 @@ def _save_seen(seen: set[str]) -> None:
     SEEN_PATH.write_text(json.dumps(sorted(seen)))
 
 
-def _format_thread(messages: list[EmailMessage]) -> str:
-    ordered = sorted(messages, key=lambda m: m.sent_at)
-    parts = [f"RFQ email thread (subject: {ordered[-1].subject}):", ""]
-    for msg in ordered:
-        parts.append(f"--- message_id: {msg.message_id}")
-        parts.append(f"From: {msg.sender}")
-        parts.append(f"Sent: {msg.sent_at.isoformat()}")
-        parts.append("")
-        parts.append(msg.body_text)
-        parts.append("")
-    parts.append(
-        "Decide the single correct action for the latest message. "
-        "If a reply is warranted, call send_reply with that message_id."
-    )
-    return "\n".join(parts)
-
-
-def _execute_send_reply(mailbox: GraphMailbox, tool_input: dict) -> str:
-    message_id = tool_input["message_id"]
-    body_text = tool_input["body_text"]
-    autosend = os.environ.get("FORGEFLOW_MANAGED_AGENT_AUTOSEND", "").lower() in ("1", "true", "yes")
-    if not autosend:
-        print(f"\n[DRAFT for {message_id}] (not sent — set FORGEFLOW_MANAGED_AGENT_AUTOSEND=true to send)\n{body_text}\n")
-        return "Draft recorded. Not sent (autosend disabled)."
-    mailbox.reply(message_id, body_text)
-    print(f"\n[SENT reply to {message_id}]\n")
-    return "Reply sent."
-
-
-def _run_session(client: anthropic.Anthropic, agent_id: str, env_id: str,
-                 mailbox: GraphMailbox, thread_text: str) -> None:
-    session = client.beta.sessions.create(
-        agent=agent_id,
-        environment_id=env_id,
-        title="RFQ thread triage",
-    )
-    print(f"[trace] https://platform.claude.com/workspaces/default/sessions/{session.id}")
-    # Stream-first: open the stream before sending the kickoff message.
-    with client.beta.sessions.events.stream(session_id=session.id) as stream:
-        client.beta.sessions.events.send(
-            session_id=session.id,
-            events=[{"type": "user.message", "content": [{"type": "text", "text": thread_text}]}],
-        )
-        for event in stream:
-            if event.type == "agent.message":
-                for block in event.content:
-                    if block.type == "text":
-                        print(block.text, end="", flush=True)
-            elif event.type == "agent.custom_tool_use":
-                result = _execute_send_reply(mailbox, event.input)
-                client.beta.sessions.events.send(
-                    session_id=session.id,
-                    events=[{
-                        "type": "user.custom_tool_result",
-                        "custom_tool_use_id": event.id,
-                        "content": [{"type": "text", "text": result}],
-                    }],
-                )
-            elif event.type == "session.status_idle":
-                if getattr(event.stop_reason, "type", None) == "requires_action":
-                    continue  # waiting on our tool result — keep streaming
-                break  # end_turn / retries_exhausted — terminal
-            elif event.type == "session.status_terminated":
-                break
-    # The stream reports idle slightly before the session's queryable status
-    # catches up; archiving too early 400s with "cannot archive while running".
-    for _ in range(10):
-        if client.beta.sessions.retrieve(session_id=session.id).status != "running":
-            client.beta.sessions.archive(session_id=session.id)
-            break
-        time.sleep(0.2)
-
-
-def run_once(client: anthropic.Anthropic, mailbox: GraphMailbox,
-             agent_id: str, env_id: str, seen: set[str]) -> int:
+def run_once(client, mailbox, agent_id, env_id, seen: set[str]) -> int:
     messages = mailbox.fetch_recent()
     by_thread: dict[str, list[EmailMessage]] = {}
     for msg in messages:
@@ -236,9 +372,8 @@ def run_once(client: anthropic.Anthropic, mailbox: GraphMailbox,
     for msg in messages:
         if msg.message_id in seen:
             continue
-        thread_text = _format_thread(by_thread[msg.thread_id])
-        print(f"\n=== Triaging thread {msg.thread_id} (latest {msg.message_id}) ===")
-        _run_session(client, agent_id, env_id, mailbox, thread_text)
+        print(f"\n=== {msg.thread_id} / {msg.message_id} ===")
+        _run_session(client, agent_id, env_id, mailbox, _format_thread(by_thread[msg.thread_id]))
         seen.add(msg.message_id)
         processed += 1
     if processed:
@@ -254,68 +389,65 @@ def run(interval: int = POLL_INTERVAL_SECONDS) -> None:
         raise SystemExit("Run `python -m forgeflow.managed_agent setup` first.")
     mailbox = GraphMailbox()
     seen = _load_seen()
-    print(f"Polling inbox every {interval}s. Ctrl-C to stop.")
+    print(f"Polling every {interval}s. Ctrl-C to stop.")
     while True:
-        count = run_once(client, mailbox, agent_id, env_id, seen)
-        if not count:
+        if not run_once(client, mailbox, agent_id, env_id, seen):
             print(".", end="", flush=True)
         time.sleep(interval)
 
 
+# ── Health / test ─────────────────────────────────────────────────────────────
+
 def health() -> None:
-    """Check all credentials and the deployed agent/environment are reachable."""
     ok = True
 
-    def check(label: str, fn):
+    def check(label, fn):
         nonlocal ok
         try:
-            result = fn()
-            print(f"  [OK]  {label}" + (f": {result}" if result else ""))
+            print(f"  [OK]  {label}" + (f": {r}" if (r := fn()) else ""))
         except Exception as exc:
             print(f"  [FAIL] {label}: {exc}")
             ok = False
 
     print("\n--- ForgeFlow Managed Agent Health Check ---")
-
-    # 1. Anthropic API
     client = _client()
-    check("ANTHROPIC_API_KEY", lambda: "set" if os.environ.get("ANTHROPIC_API_KEY") else (_ for _ in ()).throw(RuntimeError("not set")))
-
-    # 2. Agent + environment exist on Anthropic
-    agent_id = os.environ.get("FORGEFLOW_AGENT_ID", "")
+    coordinator_id = os.environ.get("FORGEFLOW_AGENT_ID", "")
+    reply_id = os.environ.get("FORGEFLOW_REPLY_AGENT_ID", "")
     env_id = os.environ.get("FORGEFLOW_ENV_ID", "")
-    check("FORGEFLOW_AGENT_ID", lambda: agent_id or (_ for _ in ()).throw(RuntimeError("not set — run setup")))
-    check("FORGEFLOW_ENV_ID", lambda: env_id or (_ for _ in ()).throw(RuntimeError("not set — run setup")))
-    if agent_id:
-        check("Agent reachable on Anthropic", lambda: client.beta.agents.retrieve(agent_id).id)
+
+    check("ANTHROPIC_API_KEY", lambda: "set" if os.environ.get("ANTHROPIC_API_KEY") else _fail("not set"))
+    check("FORGEFLOW_AGENT_ID", lambda: coordinator_id or _fail("not set — run setup"))
+    check("FORGEFLOW_REPLY_AGENT_ID", lambda: reply_id or _fail("not set — run setup"))
+    check("FORGEFLOW_ENV_ID", lambda: env_id or _fail("not set — run setup"))
+
+    if coordinator_id:
+        def _coord():
+            a = client.beta.agents.retrieve(coordinator_id)
+            roster = _roster(a)
+            if not roster:
+                raise RuntimeError("coordinator has no subagent roster — run deploy")
+            return f"v{a.version}, roster {roster}"
+        check("Coordinator reachable, roster wired", _coord)
+    if reply_id:
+        check("Reply subagent reachable",
+              lambda: f"v{client.beta.agents.retrieve(reply_id).version}")
     if env_id:
-        check("Environment reachable on Anthropic", lambda: client.beta.environments.retrieve(env_id).id)
+        check("Environment reachable", lambda: client.beta.environments.retrieve(env_id).id)
 
-    # 3. Outlook access token
-    check("FORGEFLOW_OUTLOOK_ACCESS_TOKEN", lambda: "set" if os.environ.get("FORGEFLOW_OUTLOOK_ACCESS_TOKEN") else (_ for _ in ()).throw(RuntimeError("not set")))
-    check("FORGEFLOW_OUTLOOK_AUTH_MODE", lambda: os.environ.get("FORGEFLOW_OUTLOOK_AUTH_MODE", "(not set)"))
-
-    # 4. Live Graph call — fetch 1 message (triggers auto-refresh on 401)
-    def _graph_ping():
-        mailbox = GraphMailbox()
-        msgs = mailbox.fetch_recent(top=1)
-        return f"inbox reachable, got {len(msgs)} message(s)"
-    check("Microsoft Graph / Outlook token", _graph_ping)
+    check("Outlook token", lambda: f"inbox reachable, {len(GraphMailbox().fetch_recent(top=1))} message(s)")
 
     print("---")
-    if ok:
-        print("All checks passed. Ready to run.\n")
-    else:
-        print("One or more checks failed. Fix the issues above, then retry.\n")
+    print("All checks passed. Ready to run.\n" if ok else "One or more checks failed.\n")
+    if not ok:
         raise SystemExit(1)
 
 
+def _fail(msg: str):
+    raise RuntimeError(msg)
+
+
 def test_trigger(message_id: str | None = None) -> None:
-    """
-    Pull the most recent email from inbox and run one managed-agent session against it.
-    Pass a specific message_id to target that thread, or omit to use the latest message.
-    Replies are DRAFT-only unless FORGEFLOW_MANAGED_AGENT_AUTOSEND=true.
-    """
+    """Run one coordinator session against a real inbox thread. Draft-only by default."""
     client = _client()
     agent_id = os.environ.get("FORGEFLOW_AGENT_ID")
     env_id = os.environ.get("FORGEFLOW_ENV_ID")
@@ -324,27 +456,19 @@ def test_trigger(message_id: str | None = None) -> None:
     mailbox = GraphMailbox()
     messages = mailbox.fetch_recent(top=25)
     if not messages:
-        raise SystemExit("No messages in inbox — nothing to test with.")
+        raise SystemExit("No messages in inbox.")
+    target = (next((m for m in messages if m.message_id == message_id), None)
+              if message_id else messages[0])
+    if target is None:
+        raise SystemExit(f"message_id {message_id!r} not in the last 25 messages.")
 
-    if message_id:
-        target = next((m for m in messages if m.message_id == message_id), None)
-        if not target:
-            raise SystemExit(f"message_id {message_id!r} not found in the last 25 messages.")
-    else:
-        target = messages[0]
-
-    # Build thread: all messages sharing this thread_id
-    thread_msgs = [m for m in messages if m.thread_id == target.thread_id]
-    thread_text = _format_thread(thread_msgs)
-    print(f"\n=== TEST: triaging thread {target.thread_id} (message {target.message_id}) ===")
-    print(f"Subject : {target.subject}")
+    thread = [m for m in messages if m.thread_id == target.thread_id]
+    print(f"\n=== TEST: {target.subject}")
     print(f"From    : {target.sender}")
-    print(f"Sent    : {target.sent_at.isoformat()}")
-    autosend = os.environ.get("FORGEFLOW_MANAGED_AGENT_AUTOSEND", "").lower() in ("1", "true", "yes")
-    print(f"Autosend: {'ON — will actually send replies' if autosend else 'OFF — replies are drafts only'}")
-    print()
-    _run_session(client, agent_id, env_id, mailbox, thread_text)
-    print()
+    print(f"Autosend: {'ON — replies WILL be sent' if _autosend() else 'OFF — drafts only'}\n")
+    _run_session(client, agent_id, env_id, mailbox, _format_thread(thread))
+    if RECORDED:
+        print(f"\n[table] coordinator recorded {len(RECORDED)} supplier state(s)")
 
 
 def main() -> None:
@@ -357,13 +481,11 @@ def main() -> None:
     elif command == "health":
         health()
     elif command == "test":
-        # Optional: python -m forgeflow.managed_agent test <message_id>
-        msg_id = sys.argv[2] if len(sys.argv) > 2 else None
-        test_trigger(msg_id)
+        test_trigger(sys.argv[2] if len(sys.argv) > 2 else None)
     elif command == "run":
         run()
     else:
-        raise SystemExit(f"Unknown command: {command!r}. Use 'setup', 'deploy', 'health', 'test', or 'run'.")
+        raise SystemExit(f"Unknown command: {command!r}. Use setup, deploy, health, test, or run.")
 
 
 if __name__ == "__main__":

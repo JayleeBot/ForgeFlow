@@ -33,7 +33,7 @@ from forgeflow.config import load_env, set_env_values
 from forgeflow.graph import GraphMailbox
 from forgeflow.models import EmailMessage
 
-MODEL = "claude-opus-4-8"
+MODEL = {"id": "claude-opus-5", "effort": "xhigh"}
 SEEN_PATH = Path("data/managed_agent_seen.json")
 POLL_INTERVAL_SECONDS = 60
 
@@ -92,8 +92,18 @@ def _client() -> anthropic.Anthropic:
 
 
 def setup() -> None:
-    """Create the environment and agent once; persist their IDs to .env."""
+    """Create the environment and agent once; persist their IDs to .env.
+
+    Refuses to run if IDs already exist — creating a second agent orphans the
+    first. Use `deploy` to push config changes to the existing agent.
+    """
     client = _client()
+    if os.environ.get("FORGEFLOW_AGENT_ID") or os.environ.get("FORGEFLOW_ENV_ID"):
+        raise SystemExit(
+            "FORGEFLOW_AGENT_ID / FORGEFLOW_ENV_ID are already set in .env.\n"
+            "Use `python -m forgeflow.managed_agent deploy` to update the existing "
+            "agent, or clear those keys first to provision a new one."
+        )
     env = client.beta.environments.create(
         name="forgeflow-rfq",
         config={"type": "cloud", "networking": {"type": "unrestricted"}},
@@ -107,6 +117,28 @@ def setup() -> None:
     set_env_values({"FORGEFLOW_AGENT_ID": agent.id, "FORGEFLOW_ENV_ID": env.id})
     print(f"Created environment {env.id} and agent {agent.id} (v{agent.version}).")
     print("Saved FORGEFLOW_AGENT_ID and FORGEFLOW_ENV_ID to .env.")
+
+
+def deploy() -> None:
+    """Push the model / system prompt / tools in this file to the existing agent.
+
+    Each update creates a new immutable agent version; running sessions keep the
+    version they were created with.
+    """
+    client = _client()
+    agent_id = os.environ.get("FORGEFLOW_AGENT_ID")
+    if not agent_id:
+        raise SystemExit("No FORGEFLOW_AGENT_ID in .env — run `setup` first.")
+    current = client.beta.agents.retrieve(agent_id)
+    agent = client.beta.agents.update(
+        agent_id,
+        version=current.version,  # optimistic lock: 409 if someone else updated
+        model=MODEL,
+        system=SYSTEM_PROMPT,
+        tools=[SEND_REPLY_TOOL],
+    )
+    print(f"Updated agent {agent.id}: v{current.version} -> v{agent.version}")
+    print(f"  model: {agent.model}")
 
 
 def _load_seen() -> set[str]:
@@ -156,6 +188,7 @@ def _run_session(client: anthropic.Anthropic, agent_id: str, env_id: str,
         environment_id=env_id,
         title="RFQ thread triage",
     )
+    print(f"[trace] https://platform.claude.com/workspaces/default/sessions/{session.id}")
     # Stream-first: open the stream before sending the kickoff message.
     with client.beta.sessions.events.stream(session_id=session.id) as stream:
         client.beta.sessions.events.send(
@@ -183,7 +216,13 @@ def _run_session(client: anthropic.Anthropic, agent_id: str, env_id: str,
                 break  # end_turn / retries_exhausted — terminal
             elif event.type == "session.status_terminated":
                 break
-    client.beta.sessions.archive(session_id=session.id)
+    # The stream reports idle slightly before the session's queryable status
+    # catches up; archiving too early 400s with "cannot archive while running".
+    for _ in range(10):
+        if client.beta.sessions.retrieve(session_id=session.id).status != "running":
+            client.beta.sessions.archive(session_id=session.id)
+            break
+        time.sleep(0.2)
 
 
 def run_once(client: anthropic.Anthropic, mailbox: GraphMailbox,
@@ -313,6 +352,8 @@ def main() -> None:
     command = sys.argv[1] if len(sys.argv) > 1 else "run"
     if command == "setup":
         setup()
+    elif command == "deploy":
+        deploy()
     elif command == "health":
         health()
     elif command == "test":
@@ -322,7 +363,7 @@ def main() -> None:
     elif command == "run":
         run()
     else:
-        raise SystemExit(f"Unknown command: {command!r}. Use 'setup', 'health', 'test', or 'run'.")
+        raise SystemExit(f"Unknown command: {command!r}. Use 'setup', 'deploy', 'health', 'test', or 'run'.")
 
 
 if __name__ == "__main__":

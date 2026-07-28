@@ -1,0 +1,118 @@
+name: Email scan
+
+# Manual only. There is deliberately no schedule: an Actions runner starts with
+# an empty database every time, so it has no memory of which messages it has
+# already answered. On a timer that means a supplier receives the same chase
+# email on every run. A human deciding when to press the button is the guard.
+on:
+  workflow_dispatch:
+    inputs:
+      top:
+        description: "How many recent messages to pull from the inbox"
+        required: false
+        default: "10"
+      send:
+        description: "Send the drafted replies. Leave off to review them first."
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  # Two scans running at once would both process the same unread mail.
+  group: email-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: src
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      FORGEFLOW_OUTLOOK_AUTH_MODE: delegated
+      FORGEFLOW_OUTLOOK_MAILBOX: me
+      FORGEFLOW_OUTLOOK_REFRESH_TOKEN: ${{ secrets.FORGEFLOW_OUTLOOK_REFRESH_TOKEN }}
+      FORGEFLOW_AZURE_CLIENT_ID: ${{ secrets.FORGEFLOW_AZURE_CLIENT_ID }}
+      FORGEFLOW_AZURE_TENANT_ID: ${{ secrets.FORGEFLOW_AZURE_TENANT_ID }}
+      FORGEFLOW_OUTLOOK_TOP: ${{ inputs.top }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check the secrets are present
+        run: |
+          missing=""
+          for name in ANTHROPIC_API_KEY FORGEFLOW_OUTLOOK_REFRESH_TOKEN FORGEFLOW_AZURE_CLIENT_ID; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Install
+        run: pip install --quiet -e .
+
+      - name: Pull recent mail
+        id: sync
+        run: |
+          out=$(python -m forgeflow.cli sync-outlook)
+          echo "$out"
+          echo "ingested=${out#ingested=}" >> "$GITHUB_OUTPUT"
+
+      - name: Triage
+        id: process
+        run: |
+          out=$(python -m forgeflow.cli process)
+          echo "$out"
+          echo "processed=${out#processed=}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect the drafts
+        id: drafts
+        run: |
+          # send-replies without --yes prints the pending drafts and sends nothing.
+          python -m forgeflow.cli send-replies > drafts.txt 2>&1 || true
+          cat drafts.txt
+          count=$(python -c "import json,pathlib;t=pathlib.Path('drafts.txt').read_text();i=t.find('[');j=t.rfind(']');print(len(json.loads(t[i:j+1])) if i>=0 and j>i else 0)" 2>/dev/null || echo 0)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Send the replies
+        if: ${{ inputs.send }}
+        run: |
+          echo "::warning::Sending ${{ steps.drafts.outputs.count }} reply(ies) to real suppliers."
+          python -m forgeflow.cli send-replies --yes
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Email scan"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Messages pulled | ${{ steps.sync.outputs.ingested || '—' }} |"
+            echo "| Threads triaged | ${{ steps.process.outputs.processed || '—' }} |"
+            echo "| Replies drafted | ${{ steps.drafts.outputs.count || '—' }} |"
+            echo "| Sent | ${{ inputs.send && 'yes — replies went to suppliers' || 'no — drafts only' }} |"
+            echo ""
+            if [ "${{ inputs.send }}" != "true" ]; then
+              echo "Nothing was sent. Download the \`scan-results\` artifact to read the drafts."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-results
+          # The runner is wiped after the job, so the database only survives here.
+          path: |
+            drafts.txt
+            data/forgeflow.db
+          retention-days: 14
+          if-no-files-found: warn

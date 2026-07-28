@@ -40,6 +40,9 @@ def main() -> None:
     evaluate.add_argument("--save", help="write this run's grades to a JSON file")
     evaluate.add_argument("--compare", help="diff against a previously saved run")
     evaluate.add_argument("--workers", type=int, default=evals.DEFAULT_WORKERS)
+    evaluate.add_argument("--detail", action="store_true",
+                          help="print input / action / output for every case")
+    evaluate.add_argument("--only", help="run only cases whose filename contains this")
     args = parser.parse_args()
 
     if args.cmd == "sync-local":
@@ -74,9 +77,13 @@ def main() -> None:
 
 def run_eval(args) -> None:
     cases = evals.load_cases(Path(args.case_file))
+    if args.only:
+        cases = [c for c in cases if args.only in c["email_file"]]
+        if not cases:
+            raise SystemExit(f"No cases matching {args.only!r}")
     print(f"Running {len(cases)} cases across {args.workers} workers...\n", flush=True)
     results = evals.run_evals(cases, workers=args.workers)
-    print(evals.format_report(results))
+    print(evals.format_report(results, detail=args.detail))
 
     if args.save:
         path = Path(args.save)

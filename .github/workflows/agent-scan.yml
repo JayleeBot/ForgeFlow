@@ -55,6 +55,12 @@ jobs:
       FORGEFLOW_REPLY_AGENT_ID: ${{ vars.FORGEFLOW_REPLY_AGENT_ID }}
       FORGEFLOW_ENV_ID: ${{ vars.FORGEFLOW_ENV_ID }}
 
+      # --- comparison table + seen state ---
+      # Without both of these the host-side tools fall back to SQLite, which on a
+      # runner means an empty table every run and no dedupe across dispatches.
+      BUTTERBASE_API_KEY: ${{ secrets.BUTTERBASE_API_KEY }}
+      BUTTERBASE_APP_URL: ${{ vars.BUTTERBASE_APP_URL }}
+
       # --- mailbox ---
       FORGEFLOW_OUTLOOK_AUTH_MODE: delegated
       FORGEFLOW_OUTLOOK_MAILBOX: me

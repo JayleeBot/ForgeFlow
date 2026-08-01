@@ -25,7 +25,10 @@ class GraphMailbox:
         mailbox: str | None = None,
         folder: str | None = None,
     ) -> None:
-        self.access_token = access_token or os.environ["FORGEFLOW_OUTLOOK_ACCESS_TOKEN"]
+        # May be empty: a CI runner has no .env, so it starts with only a refresh
+        # token. The empty bearer draws a 401 on the first call, which _send
+        # turns into a refresh and a retry.
+        self.access_token = access_token or os.environ.get("FORGEFLOW_OUTLOOK_ACCESS_TOKEN", "")
         self.mailbox = mailbox or os.environ.get("FORGEFLOW_OUTLOOK_MAILBOX", "forgeflow.demo@outlook.com")
         self.folder = folder or os.environ.get("FORGEFLOW_OUTLOOK_FOLDER", "Inbox")
         self.auth_mode = os.environ.get("FORGEFLOW_OUTLOOK_AUTH_MODE", "app")

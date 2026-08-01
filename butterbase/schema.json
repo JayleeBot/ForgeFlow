@@ -1,0 +1,104 @@
+{
+  "name": "forgeflow-rfq-initial",
+  "dry_run": true,
+  "schema": {
+    "tables": {
+      "rfqs": {
+        "columns": {
+          "id": { "type": "text", "primaryKey": true},
+          "thread_id": { "type": "text", "nullable": false, "unique": true },
+          "subject": { "type": "text", "nullable": false },
+          "buyer_email": { "type": "text" },
+          "status": { "type": "text", "nullable": false },
+          "collection_form": { "type": "jsonb" },
+          "created_at": { "type": "timestamptz", "nullable": false, "default": "now()" },
+          "updated_at": { "type": "timestamptz", "nullable": false, "default": "now()" }
+        }
+      },
+
+      "supplier_quotes": {
+        "columns": {
+          "id": { "type": "text", "primaryKey": true},
+          "rfq_id": {
+            "type": "text",
+            "nullable": false,
+            "references": { "table": "rfqs", "column": "id" }
+          },
+          "thread_id": { "type": "text", "nullable": false },
+          "supplier_email": { "type": "text", "nullable": false },
+          "supplier_name": { "type": "text" },
+          "status": { "type": "text", "nullable": false },
+          "extracted": { "type": "jsonb" },
+          "collection_form": { "type": "jsonb" },
+          "missing_fields": { "type": "jsonb" },
+          "next_action": { "type": "jsonb" },
+          "latest_message_id": { "type": "text", "nullable": false },
+          "created_at": { "type": "timestamptz", "nullable": false, "default": "now()" },
+          "updated_at": { "type": "timestamptz", "nullable": false, "default": "now()" }
+        },
+        "indexes": {
+          "supplier_quotes_rfq_supplier_uniq": {
+            "columns": ["rfq_id", "supplier_email"],
+            "unique": true
+          },
+          "supplier_quotes_rfq_idx": { "columns": ["rfq_id"], "unique": false },
+          "supplier_quotes_thread_idx": { "columns": ["thread_id"], "unique": false }
+        }
+      },
+
+      "interactions": {
+        "columns": {
+          "message_id": { "type": "text", "primaryKey": true},
+          "thread_id": { "type": "text", "nullable": false },
+          "subject": { "type": "text", "nullable": false },
+          "sender": { "type": "text", "nullable": false },
+          "recipients": { "type": "text", "nullable": false },
+          "sent_at": { "type": "timestamptz", "nullable": false },
+          "body_text": { "type": "text", "nullable": false },
+          "source_path": { "type": "text", "nullable": false },
+          "classification": { "type": "text" },
+          "result": { "type": "jsonb" },
+          "draft_reply": { "type": "text" },
+          "error": { "type": "text" }
+        },
+        "indexes": {
+          "interactions_thread_idx": { "columns": ["thread_id"], "unique": false }
+        }
+      },
+
+      "agent_seen": {
+        "columns": {
+          "message_id": { "type": "text", "primaryKey": true},
+          "session_id": { "type": "text" },
+          "sent_reply": { "type": "boolean", "nullable": false, "default": "false" },
+          "processed_at": { "type": "timestamptz", "nullable": false, "default": "now()" }
+        }
+      },
+
+      "quote_price_breaks": {
+        "columns": {
+          "id": {
+            "type": "uuid",
+            "primaryKey": true,
+            "default": "gen_random_uuid()"
+          },
+          "quote_id": {
+            "type": "text",
+            "nullable": false,
+            "references": { "table": "supplier_quotes", "column": "id" }
+          },
+          "tier": { "type": "text", "nullable": false },
+          "quantity": { "type": "integer", "nullable": false },
+          "unit_price": { "type": "numeric(12,4)", "nullable": false },
+          "lead_time_days": { "type": "integer" }
+        },
+        "indexes": {
+          "quote_price_breaks_uniq": {
+            "columns": ["quote_id", "tier", "quantity"],
+            "unique": true
+          }
+        }
+      }
+    }
+  }
+}

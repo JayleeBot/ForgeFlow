@@ -17,6 +17,7 @@ the primary thread, so one event stream drives everything.
     python -m forgeflow.managed_agent deploy    # push prompt/tool changes to both
     python -m forgeflow.managed_agent health
     python -m forgeflow.managed_agent test [message_id]
+    python -m forgeflow.managed_agent scan      # one pass over the inbox, then exit
     python -m forgeflow.managed_agent run       # poll the inbox
 """
 from __future__ import annotations
@@ -381,6 +382,21 @@ def run_once(client, mailbox, agent_id, env_id, seen: set[str]) -> int:
     return processed
 
 
+def scan_once() -> None:
+    """One pass over the inbox, then exit — the entry point for CI.
+
+    `run` polls forever, which a workflow job cannot do. A runner also starts
+    without data/managed_agent_seen.json, so every message reads as new.
+    """
+    client = _client()
+    agent_id = os.environ.get("FORGEFLOW_AGENT_ID")
+    env_id = os.environ.get("FORGEFLOW_ENV_ID")
+    if not agent_id or not env_id:
+        raise SystemExit("Run `python -m forgeflow.managed_agent setup` first.")
+    processed = run_once(client, GraphMailbox(), agent_id, env_id, _load_seen())
+    print(f"processed={processed}")
+
+
 def run(interval: int = POLL_INTERVAL_SECONDS) -> None:
     client = _client()
     agent_id = os.environ.get("FORGEFLOW_AGENT_ID")
@@ -484,8 +500,12 @@ def main() -> None:
         test_trigger(sys.argv[2] if len(sys.argv) > 2 else None)
     elif command == "run":
         run()
+    elif command == "scan":
+        scan_once()
     else:
-        raise SystemExit(f"Unknown command: {command!r}. Use setup, deploy, health, test, or run.")
+        raise SystemExit(
+            f"Unknown command: {command!r}. Use setup, deploy, health, test, scan, or run."
+        )
 
 
 if __name__ == "__main__":

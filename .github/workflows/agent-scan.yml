@@ -1,0 +1,125 @@
+name: Agent scan
+
+# The managed-agent pipeline. Distinct from "Email scan", which drafts replies
+# from forgeflow's own rules -- here Anthropic hosts the coordinator loop and
+# Claude decides what to do and writes the prose.
+#
+# Separation of concerns:
+#   Anthropic  reasoning: classify the thread, decide the action, draft the reply
+#   this job   everything with a credential or a side effect -- Graph reads,
+#              Graph replies, the comparison table
+# Every tool the agent calls runs in THIS job, so the Outlook token and the
+# database never enter the sandbox.
+#
+# Manual only, and for a sharper reason than Email scan has: a runner starts
+# without data/managed_agent_seen.json, so every message in the window reads as
+# new. With send enabled, running twice replies twice to the same thread. The
+# human choosing when to press the button is the only thing preventing that.
+on:
+  workflow_dispatch:
+    inputs:
+      top:
+        description: "How many recent messages to consider"
+        required: false
+        default: "5"
+      send:
+        description: "Let the agent actually send its replies. Off = draft to the log."
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  # Two scans would open sessions for the same threads.
+  group: agent-scan
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    # Sessions are opus-5 at xhigh effort, one per unseen message.
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: src
+
+      # --- credentials: this job's half of the split ---
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      FORGEFLOW_OUTLOOK_REFRESH_TOKEN: ${{ secrets.FORGEFLOW_OUTLOOK_REFRESH_TOKEN }}
+      FORGEFLOW_AZURE_CLIENT_ID: ${{ secrets.FORGEFLOW_AZURE_CLIENT_ID }}
+      FORGEFLOW_AZURE_TENANT_ID: ${{ secrets.FORGEFLOW_AZURE_TENANT_ID }}
+
+      # --- which agents to drive: IDs from `managed_agent setup`, not secrets ---
+      FORGEFLOW_AGENT_ID: ${{ vars.FORGEFLOW_AGENT_ID }}
+      FORGEFLOW_REPLY_AGENT_ID: ${{ vars.FORGEFLOW_REPLY_AGENT_ID }}
+      FORGEFLOW_ENV_ID: ${{ vars.FORGEFLOW_ENV_ID }}
+
+      # --- mailbox ---
+      FORGEFLOW_OUTLOOK_AUTH_MODE: delegated
+      FORGEFLOW_OUTLOOK_MAILBOX: me
+      FORGEFLOW_OUTLOOK_TOP: ${{ inputs.top }}
+
+      # send_reply drafts to the log unless this is true.
+      FORGEFLOW_MANAGED_AGENT_AUTOSEND: ${{ inputs.send }}
+      # Leave sessions in the Console -- reading the trace is the point.
+      FORGEFLOW_ARCHIVE_SESSIONS: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check the configuration is present
+        run: |
+          missing=""
+          for name in ANTHROPIC_API_KEY FORGEFLOW_OUTLOOK_REFRESH_TOKEN FORGEFLOW_AZURE_CLIENT_ID; do
+            [ -n "${!name}" ] || missing="$missing $name (secret)"
+          done
+          for name in FORGEFLOW_AGENT_ID FORGEFLOW_REPLY_AGENT_ID FORGEFLOW_ENV_ID; do
+            [ -n "${!name}" ] || missing="$missing $name (variable)"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing configuration:$missing"
+            echo "Secrets: Settings → Secrets and variables → Actions → Secrets."
+            echo "Variables: the same page, Variables tab. Get the IDs from .env"
+            echo "after 'python -m forgeflow.managed_agent setup'."
+            exit 1
+          fi
+
+      - name: Install
+        run: pip install --quiet -e .
+
+      - name: Health check
+        # Proves the agents are reachable and the Outlook token still refreshes
+        # before any session is opened, so a dead token costs nothing.
+        run: python -m forgeflow.managed_agent health
+
+      - name: Run the agent
+        id: scan
+        run: |
+          echo "Autosend: ${{ inputs.send && 'ON — replies WILL be sent' || 'OFF — drafts only' }}"
+          python -m forgeflow.managed_agent scan 2>&1 | tee agent.log
+          echo "processed=$(grep -oE 'processed=[0-9]+' agent.log | tail -1 | cut -d= -f2)" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Agent scan"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Threads handled | ${{ steps.scan.outputs.processed || '—' }} |"
+            echo "| Autosend | ${{ inputs.send && 'yes — replies went to suppliers' || 'no — drafts only' }} |"
+            echo ""
+            echo "Session traces are linked in the \`Run the agent\` log and kept in the Console."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-scan-log
+          path: agent.log
+          retention-days: 14
+          if-no-files-found: warn

@@ -31,6 +31,7 @@ from pathlib import Path
 import anthropic
 
 from forgeflow import butterbase
+from forgeflow.auth import refresh_access_token
 from forgeflow.config import load_env, set_env_values
 from forgeflow.graph import GraphMailbox
 from forgeflow.models import EmailMessage
@@ -512,6 +513,7 @@ def health() -> None:
         check("Environment reachable", lambda: client.beta.environments.retrieve(env_id).id)
 
     check("Outlook token", lambda: f"inbox reachable, {len(GraphMailbox().fetch_recent(top=1))} message(s)")
+    check("Outlook identity", _token_identity)
 
     print("---")
     print("All checks passed. Ready to run.\n" if ok else "One or more checks failed.\n")
@@ -521,6 +523,25 @@ def health() -> None:
 
 def _fail(msg: str):
     raise RuntimeError(msg)
+
+
+def _token_identity() -> str:
+    """Which app registration and mailbox this token actually belongs to.
+
+    Both come from the access token's own claims. Neither is a secret -- a client
+    id is public by design -- and printing them is the only way to tell which of
+    several app registrations a working credential came from. The token itself is
+    never logged.
+    """
+    import base64
+
+    token = refresh_access_token()
+    payload = token.split(".")[1]
+    payload += "=" * (-len(payload) % 4)
+    claims = json.loads(base64.urlsafe_b64decode(payload))
+    mailbox = claims.get("upn") or claims.get("unique_name") or claims.get("preferred_username")
+    scopes = claims.get("scp", "")
+    return f"client_id={claims.get('appid')} mailbox={mailbox} scopes=[{scopes}]"
 
 
 def test_trigger(message_id: str | None = None) -> None:

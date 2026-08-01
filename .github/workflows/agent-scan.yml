@@ -103,6 +103,14 @@ jobs:
         # before any session is opened, so a dead token costs nothing.
         run: python -m forgeflow.managed_agent health
 
+      - name: Hand the rotated token to Butterbase
+        # The health check above just redeemed the refresh token, and Entra
+        # issued a replacement that .env now holds and this runner is about to
+        # delete. Push it to Butterbase so the function keeps a live credential
+        # without anyone signing in again. Server to server -- never logged.
+        if: always()
+        run: python butterbase/push-rotated-token.py
+
       - name: Run the agent
         id: scan
         run: |

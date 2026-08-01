@@ -30,6 +30,7 @@ from pathlib import Path
 
 import anthropic
 
+from forgeflow import butterbase
 from forgeflow.config import load_env, set_env_values
 from forgeflow.graph import GraphMailbox
 from forgeflow.models import EmailMessage
@@ -242,8 +243,11 @@ def _autosend() -> bool:
 
 def _run_read_table(tool_input: dict) -> str:
     reference = (tool_input.get("rfq_reference") or "").strip().lower()
-    with connect() as conn:
-        states = rfq_states(conn)
+    if butterbase.enabled():
+        states = butterbase.rfq_states()
+    else:
+        with connect() as conn:
+            states = rfq_states(conn)
     if reference:
         matched = [s for s in states
                    if reference in (s.get("subject") or "").lower()
@@ -257,6 +261,34 @@ def _run_read_table(tool_input: dict) -> str:
 def _run_record(tool_input: dict) -> str:
     supplier = tool_input.get("supplier_name") or "unknown supplier"
     RECORDED.append(tool_input)
+    if not butterbase.enabled() or not CURRENT_THREAD:
+        return f"Recorded {supplier} into the comparison table."
+
+    classification = tool_input.get("classification") or "unknown"
+    extraction = tool_input.get("extraction")
+    try:
+        rfq_id = butterbase.upsert_rfq(
+            CURRENT_THREAD["thread_id"],
+            CURRENT_THREAD["subject"],
+            CURRENT_THREAD.get("buyer_email"),
+            classification,
+            # On an rfq_sent thread the extraction *is* the collection form.
+            collection_form=extraction if classification == "rfq_sent" else None,
+        )
+        if classification in ("supplier_quote", "supplier_reminder"):
+            butterbase.upsert_supplier_quote(
+                rfq_id,
+                CURRENT_THREAD["thread_id"],
+                CURRENT_THREAD["sender"],
+                tool_input.get("supplier_name"),
+                classification,
+                extraction,
+                CURRENT_THREAD["latest_message_id"],
+            )
+    except RuntimeError as exc:
+        # Tell the agent the truth. The old version always claimed success,
+        # so the coordinator trusted a table that was never written.
+        return f"Could not write {supplier} to the comparison table: {exc}"
     return f"Recorded {supplier} into the comparison table."
 
 
@@ -274,6 +306,11 @@ def _run_send_reply(mailbox: GraphMailbox | None, tool_input: dict) -> str:
 
 
 RECORDED: list[dict] = []
+
+# The thread the live session is reasoning about. record_extraction only carries
+# supplier_name/classification/extraction, so the thread it belongs to has to
+# come from here.
+CURRENT_THREAD: dict = {}
 
 TOOL_RUNNERS = {
     "read_comparison_table": lambda mb, i: _run_read_table(i),
@@ -294,7 +331,20 @@ def _format_thread(messages: list[EmailMessage]) -> str:
     return "\n".join(parts)
 
 
-def _run_session(client, agent_id: str, env_id: str, mailbox, thread_text: str) -> None:
+def _run_session(client, agent_id: str, env_id: str, mailbox,
+                 messages: list[EmailMessage]) -> str:
+    """Run one coordinator session over a thread. Returns the session id."""
+    global CURRENT_THREAD
+    latest = max(messages, key=lambda m: m.sent_at)
+    CURRENT_THREAD = {
+        "thread_id": latest.thread_id,
+        "subject": latest.subject,
+        "sender": latest.sender,
+        "buyer_email": latest.recipients or None,
+        "latest_message_id": latest.message_id,
+    }
+    thread_text = _format_thread(messages)
+
     session = client.beta.sessions.create(
         agent=agent_id, environment_id=env_id, title="RFQ thread triage",
     )
@@ -350,15 +400,22 @@ def _run_session(client, agent_id: str, env_id: str, mailbox, thread_text: str) 
             time.sleep(0.2)
     else:
         print(f"\n[session kept] {session.id} — visible in the Console")
+    return session.id
 
 
 # ── Polling ───────────────────────────────────────────────────────────────────
 
 def _load_seen() -> set[str]:
+    """Butterbase when configured: a runner's filesystem does not survive the job,
+    which is why a second dispatch used to re-reply to threads it had answered."""
+    if butterbase.enabled():
+        return butterbase.seen_message_ids()
     return set(json.loads(SEEN_PATH.read_text())) if SEEN_PATH.exists() else set()
 
 
 def _save_seen(seen: set[str]) -> None:
+    if butterbase.enabled():
+        return  # recorded per message in run_once, as each session finishes
     SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
     SEEN_PATH.write_text(json.dumps(sorted(seen)))
 
@@ -374,8 +431,12 @@ def run_once(client, mailbox, agent_id, env_id, seen: set[str]) -> int:
         if msg.message_id in seen:
             continue
         print(f"\n=== {msg.thread_id} / {msg.message_id} ===")
-        _run_session(client, agent_id, env_id, mailbox, _format_thread(by_thread[msg.thread_id]))
+        session_id = _run_session(client, agent_id, env_id, mailbox, by_thread[msg.thread_id])
         seen.add(msg.message_id)
+        if butterbase.enabled():
+            # Per message, not at the end: a crash halfway through must not
+            # leave already-answered threads looking unanswered on the next run.
+            butterbase.mark_seen(msg.message_id, session_id, _autosend())
         processed += 1
     if processed:
         _save_seen(seen)
@@ -482,7 +543,7 @@ def test_trigger(message_id: str | None = None) -> None:
     print(f"\n=== TEST: {target.subject}")
     print(f"From    : {target.sender}")
     print(f"Autosend: {'ON — replies WILL be sent' if _autosend() else 'OFF — drafts only'}\n")
-    _run_session(client, agent_id, env_id, mailbox, _format_thread(thread))
+    _run_session(client, agent_id, env_id, mailbox, thread)
     if RECORDED:
         print(f"\n[table] coordinator recorded {len(RECORDED)} supplier state(s)")
 

@@ -13,8 +13,11 @@ name: Agent scan
 #
 # Manual only, and for a sharper reason than Email scan has: a runner starts
 # without data/managed_agent_seen.json, so every message in the window reads as
-# new. With send enabled, running twice replies twice to the same thread. The
-# human choosing when to press the button is the only thing preventing that.
+# new. Sending defaults to ON, so a second dispatch re-replies to every thread
+# the first one already answered -- suppliers get the same chase twice. Nothing
+# in the code prevents this; only the gap between dispatches does. Until seen
+# state survives a run, treat every dispatch as "email everyone in the window
+# again" and keep the window small.
 on:
   workflow_dispatch:
     inputs:
@@ -23,10 +26,10 @@ on:
         required: false
         default: "5"
       send:
-        description: "Let the agent actually send its replies. Off = draft to the log."
+        description: "Send the agent's replies for real. Uncheck to draft to the log instead."
         type: boolean
         required: false
-        default: false
+        default: true
 
 concurrency:
   # Two scans would open sessions for the same threads.

@@ -536,12 +536,22 @@ def _token_identity() -> str:
     import base64
 
     token = refresh_access_token()
-    payload = token.split(".")[1]
-    payload += "=" * (-len(payload) % 4)
-    claims = json.loads(base64.urlsafe_b64decode(payload))
-    mailbox = claims.get("upn") or claims.get("unique_name") or claims.get("preferred_username")
-    scopes = claims.get("scp", "")
-    return f"client_id={claims.get('appid')} mailbox={mailbox} scopes=[{scopes}]"
+    parts = token.split(".")
+    if len(parts) >= 2:
+        payload = parts[1] + "=" * (-len(parts[1]) % 4)
+        try:
+            claims = json.loads(base64.urlsafe_b64decode(payload))
+            mailbox = (claims.get("upn") or claims.get("unique_name")
+                       or claims.get("preferred_username"))
+            return f"client_id={claims.get('appid')} mailbox={mailbox} scopes=[{claims.get('scp','')}]"
+        except Exception:
+            pass
+    # Consumer (MSA) tokens are opaque, so ask Graph who we are instead. The
+    # client id is not recoverable this way -- it only lives in the request.
+    from forgeflow.graph import GraphMailbox as _GM
+
+    me = _GM(access_token=token)._get("/me")
+    return f"mailbox={me.get('userPrincipalName') or me.get('mail')} (opaque token, no client_id claim)"
 
 
 def test_trigger(message_id: str | None = None) -> None:

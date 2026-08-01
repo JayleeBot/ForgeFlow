@@ -11,7 +11,23 @@ from forgeflow.config import set_env_values
 
 
 AUTH_ROOT = "https://login.microsoftonline.com"
-DEFAULT_SCOPES = "offline_access User.Read Mail.Read"
+# Mail.Send is what /messages/{id}/reply needs — without it the agent can read a
+# thread and draft a reply but never send one.
+DEFAULT_SCOPES = "offline_access User.Read Mail.Read Mail.Send"
+
+
+def _with_client_auth(body: dict[str, str]) -> dict[str, str]:
+    """Add client_secret when the app registration is a confidential client.
+
+    A public client (Authentication -> "Allow public client flows" = Yes) must
+    NOT send one; a confidential client must, and rejects the request with
+    AADSTS70002 otherwise. Reading it from the environment lets one code path
+    serve both, since which kind the app is is a portal setting we cannot see.
+    """
+    secret = os.environ.get("FORGEFLOW_AZURE_CLIENT_SECRET")
+    if secret:
+        body = {**body, "client_secret": secret}
+    return body
 
 
 def device_login(client_id: str, tenant: str = "consumers", scopes: str = DEFAULT_SCOPES) -> None:
@@ -29,11 +45,11 @@ def device_login(client_id: str, tenant: str = "consumers", scopes: str = DEFAUL
         try:
             token = _post(
                 token_url,
-                {
+                _with_client_auth({
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                     "client_id": client_id,
                     "device_code": device["device_code"],
-                },
+                }),
             )
         except RuntimeError as exc:
             message = str(exc)
@@ -76,12 +92,12 @@ def refresh_access_token(
     try:
         token = _post(
             f"{AUTH_ROOT}/{tenant}/oauth2/v2.0/token",
-            {
+            _with_client_auth({
                 "grant_type": "refresh_token",
                 "client_id": client_id,
                 "refresh_token": refresh_token,
                 "scope": scopes,
-            },
+            }),
         )
     except RuntimeError as exc:
         raise RuntimeError(RELOGIN_HINT) from exc

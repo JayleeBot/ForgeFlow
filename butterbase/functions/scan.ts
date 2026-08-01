@@ -225,9 +225,10 @@ export async function handler(request: Request, context: any): Promise<Response>
   });
 
   const actions: string[] = [];
-  const stream = client.beta.sessions.events.stream({ session_id: session.id });
-  await client.beta.sessions.events.send({
-    session_id: session.id,
+  // The session id is a positional path parameter in the TS SDK -- passing it
+  // inside the options object yields "path with invalid segments".
+  const stream = await client.beta.sessions.events.stream(session.id);
+  await client.beta.sessions.events.send(session.id, {
     events: [{ type: "user.message", content: [{ type: "text", text: threadText }] }],
   });
 
@@ -266,7 +267,7 @@ export async function handler(request: Request, context: any): Promise<Response>
       };
       // Subagent tool calls are cross-posted here; answer on their thread.
       if (event.session_thread_id) reply.session_thread_id = event.session_thread_id;
-      await client.beta.sessions.events.send({ session_id: session.id, events: [reply] });
+      await client.beta.sessions.events.send(session.id, { events: [reply] });
     } else if (event.type === "session.status_idle") {
       if (event.stop_reason?.type === "requires_action") continue;
       break;

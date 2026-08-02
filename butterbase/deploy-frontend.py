@@ -69,7 +69,8 @@ def snapshot_script() -> str:
 
     payload = {
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "rfqs": butterbase.rfq_states() if butterbase.enabled() else [],
+        "rfqs": butterbase.dashboard_payload() if butterbase.enabled() else [],
+        "trigger_url": f"{os.environ.get('BUTTERBASE_APP_URL', '').rstrip('/')}/fn/trigger",
     }
     blob = json.dumps(payload, default=str).replace("</", "<\\/")
     return f"<script>window.__FORGEFLOW_SNAPSHOT__ = {blob};</script>\n"

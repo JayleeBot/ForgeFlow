@@ -24,6 +24,26 @@
     padding: .5rem .95rem; font-weight: 600; font-size: .88rem; cursor: pointer;
   }
   button:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  details { margin-top: .8rem; }
+  summary {
+    cursor: pointer; color: var(--muted); font-size: .82rem;
+    text-transform: uppercase; letter-spacing: .04em; font-weight: 600;
+  }
+  summary::marker { color: var(--line); }
+  .msg { border-left: 2px solid var(--line); padding: .1rem 0 .1rem .8rem; margin: .75rem 0; }
+  .msg-head { color: var(--muted); font-size: .8rem; margin-bottom: .3rem; }
+  .msg-body { white-space: pre-wrap; font-size: .86rem; color: #d9d1c7; max-height: 15rem; overflow: auto; }
+  .run { font-size: .82rem; color: var(--muted); padding: .25rem 0; }
+  .run a { color: var(--accent); text-decoration: none; }
+  .run a:hover { text-decoration: underline; }
+  .sent { color: var(--ok); }
+  .banner {
+    border: 1px solid var(--line); border-radius: 9px; padding: .7rem .9rem;
+    margin-bottom: 1rem; font-size: .87rem; background: #1d1913;
+  }
+  .banner.bad { border-color: #5a3630; color: #e6a08c; }
+  .banner.good { border-color: #2c4a41; color: var(--ok); }
   .stat { color: var(--muted); font-size: .85rem; }
   .card {
     background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
@@ -61,9 +81,11 @@
   </header>
 
   <div class="bar">
-    <button id="refresh">Refresh</button>
+    <button id="run">Process new email</button>
+    <button id="refresh" class="ghost">Refresh</button>
     <span class="stat" id="stat">Loading…</span>
   </div>
+  <div id="runout"></div>
 
   <div id="out"></div>
 </div>
@@ -145,6 +167,33 @@ function quoteBlock(q) {
     </div>`;
 }
 
+const when = (v) => esc(String(v || "").replace("T", " ").slice(0, 16));
+
+function threadBlock(messages) {
+  if (!messages || !messages.length) return "";
+  return `<details><summary>Email thread (${messages.length})</summary>
+    ${messages.map((m) => `<div class="msg">
+      <div class="msg-head"><strong>${esc(m.sender || "unknown")}</strong>
+        → ${esc(m.recipients || "—")} · ${when(m.sent_at)}</div>
+      <div class="msg-body">${esc(m.body_text || "")}</div>
+    </div>`).join("")}
+  </details>`;
+}
+
+function runsBlock(runs) {
+  if (!runs || !runs.length) return "";
+  return `<details><summary>Agent runs (${runs.length})</summary>
+    ${runs.map((r) => `<div class="run">
+      ${when(r.processed_at)} ·
+      ${r.sent_reply ? `<span class="sent">replied</span>` : "no reply"} ·
+      ${r.session_id
+        ? `<a href="https://platform.claude.com/workspaces/default/sessions/${esc(r.session_id)}"
+             target="_blank" rel="noopener">${esc(r.session_id)}</a>`
+        : "no session"}
+    </div>`).join("")}
+  </details>`;
+}
+
 function render(rfqs) {
   if (!rfqs.length) {
     out.innerHTML = `<div class="empty">No RFQs recorded yet.<br>
@@ -153,13 +202,19 @@ function render(rfqs) {
   }
   out.innerHTML = rfqs.map((r) => {
     const quotes = r.supplier_quotes || [];
+    const runs = r.runs || [];
+    const messages = r.messages || [];
     return `<div class="card">
       <h2>${esc(r.subject || "(no subject)")}
         <span class="tag ${r.status === "supplier_quote" ? "quote" : "sent"}">${esc(r.status || "")}</span></h2>
       <div class="meta">${quotes.length} supplier${quotes.length === 1 ? "" : "s"}
-        · updated ${esc((r.updated_at || "").replace("T", " ").slice(0, 16))}</div>
+        · ${messages.length} message${messages.length === 1 ? "" : "s"}
+        · ${runs.length} agent run${runs.length === 1 ? "" : "s"}
+        · updated ${when(r.updated_at)}</div>
       ${quotes.length ? quotes.map(quoteBlock).join("")
         : `<div class="meta">No supplier has replied on this thread yet.</div>`}
+      ${threadBlock(messages)}
+      ${runsBlock(runs)}
     </div>`;
   }).join("");
 }
@@ -212,6 +267,65 @@ async function load() {
   }
 }
 
+// ── Trigger ───────────────────────────────────────────────────────────────────
+// fn/trigger runs one thread and can send mail, so it is gated by a key the
+// operator holds. The key is kept in localStorage on this browser and sent as a
+// header -- it is deliberately NOT baked into the page, which is public.
+const runBtn = document.getElementById("run");
+const runOut = document.getElementById("runout");
+const TRIGGER_URL = (SNAPSHOT && SNAPSHOT.trigger_url) || `${API}/fn/trigger`;
+const KEY_STORE = "forgeflow_trigger_key";
+
+function banner(cls, html) {
+  runOut.innerHTML = `<div class="banner ${cls}">${html}</div>`;
+}
+
+async function trigger() {
+  let key = localStorage.getItem(KEY_STORE);
+  if (!key) {
+    key = prompt("Trigger key (FORGEFLOW_TRIGGER_KEY). Stored in this browser only.");
+    if (!key) return;
+    localStorage.setItem(KEY_STORE, key.trim());
+  }
+  runBtn.disabled = true;
+  banner("", "Running one thread — a session takes up to a minute…");
+  try {
+    // Key goes in a text/plain body, not a custom header: a custom header would
+    // force a CORS preflight that this API rejects, and the browser would block
+    // the request before it left. text/plain is safelisted, so this is a simple
+    // request with no preflight.
+    const res = await fetch(TRIGGER_URL, {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: localStorage.getItem(KEY_STORE),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      localStorage.removeItem(KEY_STORE);   // wrong key: make the next click re-prompt
+      banner("bad", "That trigger key was rejected. Click again to re-enter it.");
+      return;
+    }
+    if (!res.ok) {
+      banner("bad", `Trigger failed (HTTP ${res.status}). ${esc(body.error || body.message || "")}`);
+      return;
+    }
+    if (!body.processed) {
+      banner("good", `Nothing new to process — ${esc(body.reason || "no unseen messages")}.`);
+      return;
+    }
+    banner("good", `Processed <strong>${esc(body.subject || body.thread_id)}</strong> ·
+      ${esc((body.actions || []).join(", ") || "no action taken")} ·
+      ${esc(body.remaining)} left.
+      ${body.autosend ? "Replies were <strong>sent</strong>." : "Drafts only."}
+      <br>Redeploy to refresh this page, or Refresh if live reads are enabled.`);
+  } catch (err) {
+    banner("bad", `Could not reach the trigger. ${esc(err.message)}`);
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+
+runBtn.addEventListener("click", trigger);
 btn.addEventListener("click", load);
 load();
 </script>

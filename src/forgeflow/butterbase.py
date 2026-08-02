@@ -156,6 +156,33 @@ def rfq_states(limit: int = 25) -> list[dict[str, Any]]:
     return states
 
 
+def dashboard_payload(limit: int = 25) -> list[dict[str, Any]]:
+    """What functions/rfqs.ts returns, built here for the deploy-time snapshot.
+
+    Kept in step with that function deliberately: the page renders one shape and
+    does not care whether it came from a live read or from the bake.
+    """
+    _, msg_result = _call("GET", "/interactions", query={"order": "sent_at.asc", "limit": "500"})
+    messages = _rows(msg_result)
+    _, seen_result = _call("GET", "/agent_seen", query={"order": "processed_at.desc"})
+    runs = _rows(seen_result)
+    thread_of = {m.get("message_id"): m.get("thread_id") for m in messages}
+
+    states = []
+    for rfq in rfq_states(limit):
+        thread_id = rfq.get("thread_id")
+        states.append({
+            **rfq,
+            "messages": [m for m in messages if m.get("thread_id") == thread_id],
+            "runs": [
+                {**r, "thread_id": thread_of.get(r.get("message_id"))}
+                for r in runs
+                if thread_of.get(r.get("message_id")) == thread_id
+            ],
+        })
+    return states
+
+
 def seen_message_ids() -> set[str]:
     _, result = _call("GET", "/agent_seen", query={"select": "message_id", "limit": "1000"})
     return {row["message_id"] for row in _rows(result) if row.get("message_id")}

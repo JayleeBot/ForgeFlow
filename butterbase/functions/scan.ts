@@ -196,7 +196,12 @@ export async function handler(request: Request, context: any): Promise<Response>
   // so the gate was skipped and the endpoint ran a full scan unauthenticated.
   if (IS_TRIGGER) {
     const expected = env.FORGEFLOW_TRIGGER_KEY;
-    const supplied = request.headers.get("x-forgeflow-key") ?? "";
+    // Header OR body. A custom request header forces a CORS preflight, and this
+    // API does not allow x-forgeflow-key on the OPTIONS response, so the browser
+    // blocks the call outright. A text/plain body is CORS-safelisted, so the
+    // page sends the key that way and no preflight happens.
+    const supplied = request.headers.get("x-forgeflow-key")
+      ?? (await request.text().catch(() => "")).trim();
     if (!expected) {
       return Response.json(
         { error: "FORGEFLOW_TRIGGER_KEY is not set, so manual triggering is disabled." },

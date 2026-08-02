@@ -138,6 +138,15 @@ Do not try to detect this from `request.url` — an earlier version tested
 `pathname.endsWith("/trigger")`, which never matched, leaving the endpoint
 running full unauthenticated scans.
 
+**The key travels in a `text/plain` body, not a custom header.** A custom
+request header (`x-forgeflow-key`) forces a CORS preflight, and this API does
+not echo that header on the `OPTIONS` response, so the browser blocks the call
+before it is sent — it surfaces only as `TypeError: Failed to fetch`, with no
+server-side trace at all. `text/plain` is CORS-safelisted, so a POST carrying
+the key as its body is a simple request and goes straight through. Plain `GET`s
+are simple too, which is why cross-origin reads worked while the trigger did
+not. The handler accepts either form; only the browser needs the body variant.
+
 ## App environment
 
 ```

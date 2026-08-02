@@ -10,6 +10,9 @@
 // -- Graph reads, Graph replies, the comparison table -- runs here.
 import Anthropic from "npm:@anthropic-ai/sdk";
 
+// Rewritten to true by deploy-functions.py for the /fn/trigger deployment.
+const IS_TRIGGER = false;
+
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const AUTH_ROOT = "https://login.microsoftonline.com";
 const SCOPES = "offline_access User.Read Mail.Read Mail.Send";
@@ -180,6 +183,30 @@ async function recordExtraction(db: any, thread: Msg, input: any): Promise<strin
 export async function handler(request: Request, context: any): Promise<Response> {
   const env = context.env ?? {};
   const db = context.db;
+
+  // This same source is deployed twice. As /fn/scan it is cron-driven and its
+  // HTTP trigger stays auth:required. As /fn/trigger it is reachable from the
+  // dashboard, so it authenticates itself against a key the operator holds --
+  // platform auth does not exist on this app, and an open endpoint that can
+  // send mail from the mailbox is not acceptable. Fails closed: no key
+  // configured means the trigger refuses everything.
+  //
+  // IS_TRIGGER is rewritten to true at deploy time for the trigger copy. An
+  // earlier version sniffed request.url for "/trigger", which never matched --
+  // so the gate was skipped and the endpoint ran a full scan unauthenticated.
+  if (IS_TRIGGER) {
+    const expected = env.FORGEFLOW_TRIGGER_KEY;
+    const supplied = request.headers.get("x-forgeflow-key") ?? "";
+    if (!expected) {
+      return Response.json(
+        { error: "FORGEFLOW_TRIGGER_KEY is not set, so manual triggering is disabled." },
+        { status: 503 },
+      );
+    }
+    if (supplied !== expected) {
+      return Response.json({ error: "Bad or missing x-forgeflow-key." }, { status: 401 });
+    }
+  }
   const autosend = String(env.FORGEFLOW_MANAGED_AGENT_AUTOSEND ?? "").toLowerCase();
   const sending = ["1", "true", "yes"].includes(autosend);
 
@@ -207,6 +234,19 @@ export async function handler(request: Request, context: any): Promise<Response>
   const thread = messages
     .filter((m) => m.thread_id === target.thread_id)
     .sort((a, b) => a.sent_at.localeCompare(b.sent_at));
+
+  // Keep the raw thread, so the dashboard can show what the agent actually read
+  // rather than only its conclusions. Insert-only: emails do not change.
+  for (const m of thread) {
+    await db.query(
+      `insert into interactions (message_id, thread_id, subject, sender, recipients,
+         sent_at, body_text, source_path)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (message_id) do nothing`,
+      [m.message_id, m.thread_id, m.subject, m.sender, m.recipients,
+       m.sent_at, m.body_text, `graph:${m.message_id}`],
+    );
+  }
 
   const threadText = [
     `RFQ email thread (subject: ${target.subject}):`, "",

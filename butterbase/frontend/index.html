@@ -34,6 +34,10 @@
   .msg { border-left: 2px solid var(--line); padding: .1rem 0 .1rem .8rem; margin: .75rem 0; }
   .msg-head { color: var(--muted); font-size: .8rem; margin-bottom: .3rem; }
   .msg-body { white-space: pre-wrap; font-size: .86rem; color: #d9d1c7; max-height: 15rem; overflow: auto; }
+  .reply {
+    border-left: 2px solid var(--ok); margin: .6rem 0 .2rem; padding-left: .8rem;
+  }
+  .reply .msg-head { color: var(--ok); }
   .run { font-size: .82rem; color: var(--muted); padding: .25rem 0; }
   .run a { color: var(--accent); text-decoration: none; }
   .run a:hover { text-decoration: underline; }
@@ -176,6 +180,9 @@ function threadBlock(messages) {
       <div class="msg-head"><strong>${esc(m.sender || "unknown")}</strong>
         → ${esc(m.recipients || "—")} · ${when(m.sent_at)}</div>
       <div class="msg-body">${esc(m.body_text || "")}</div>
+      ${m.draft_reply ? `<div class="reply">
+        <div class="msg-head">↳ agent reply</div>
+        <div class="msg-body">${esc(m.draft_reply)}</div></div>` : ""}
     </div>`).join("")}
   </details>`;
 }

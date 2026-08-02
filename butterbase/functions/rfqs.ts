@@ -22,8 +22,8 @@ export async function handler(request: Request, context: any): Promise<Response>
 
   // The emails themselves, so the dashboard can show what the agent read.
   const messages = rows(await context.db.query(
-    "select message_id, thread_id, subject, sender, recipients, sent_at, body_text " +
-      "from interactions order by sent_at asc",
+    "select message_id, thread_id, subject, sender, recipients, sent_at, body_text, " +
+      "draft_reply from interactions order by sent_at asc",
   ));
 
   // Which agent run handled which message, and whether it replied. Joined so a

@@ -288,15 +288,24 @@ export async function handler(request: Request, context: any): Promise<Response>
           actions.push(`recorded:${event.input?.supplier_name ?? "?"}`);
         } else if (event.name === "send_reply") {
           const mid = event.input?.message_id;
+          const body = event.input?.body_text ?? "";
           if (!mid) {
             result = "No message_id was given, so nothing was sent.";
-          } else if (!sending) {
-            result = "Draft recorded. Not sent — autosend is disabled.";
-            actions.push("drafted");
           } else {
-            await replyTo(token, mid, event.input?.body_text ?? "");
-            result = "Reply sent.";
-            actions.push("sent");
+            if (sending) {
+              await replyTo(token, mid, body);
+              result = "Reply sent.";
+              actions.push("sent");
+            } else {
+              result = "Draft recorded. Not sent — autosend is disabled.";
+              actions.push("drafted");
+            }
+            // Keep the text either way. Previously it only reached the function
+            // log, so nothing the agent wrote was visible on the dashboard.
+            await db.query(
+              "update interactions set draft_reply = $1 where message_id = $2",
+              [body, mid],
+            );
           }
         } else {
           result = `Unknown tool ${event.name}.`;

@@ -103,8 +103,11 @@ ANY  /v1/{app}/fn/{name}        invoke
 - `npm:` specifiers work — `import Anthropic from "npm:@anthropic-ai/sdk"`.
 - Outbound HTTPS works (Microsoft Graph, login.microsoftonline.com).
 - `context.db.query(sql, params)` gives real SQL. `context.env` holds app env.
-- **Default timeout is 30s, max 300s.** Pass `timeout: 300` when deploying
-  anything that runs a model call, or it dies at 30s with `function_timeout`.
+- **Default timeout is 30s, max 300s — set `timeoutMs`, in milliseconds.**
+  `timeout: 300` is accepted and silently ignored, and the function then dies at
+  exactly 30000ms with `function_timeout`. Use `"timeoutMs": 300000` for
+  anything that runs a model call. `GET /functions/{name}` echoes the effective
+  `timeoutMs` and `memoryLimitMb`, which is the way to confirm it took.
 - Trigger auth is `{"type": "http", "config": {"auth": "none" | "required"}}`.
   With `required`, **not even the service key works** — it wants an end-user
   JWT, which this app cannot issue. So `required` means "cron only" in practice.

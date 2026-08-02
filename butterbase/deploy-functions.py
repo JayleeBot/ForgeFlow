@@ -69,8 +69,10 @@ def main() -> None:
                 raise SystemExit("IS_TRIGGER marker missing from scan.ts")
         payload = {"name": name, "code": code, "triggers": triggers}
         if name != "rfqs":
-            # A scan runs one opus session; 30s is not enough.
-            payload["timeout"] = 300
+            # A scan runs one opus session, which takes well over the 30000ms
+            # default. The field is timeoutMs in milliseconds -- `timeout` in
+            # seconds is silently ignored, and the function dies at exactly 30s.
+            payload["timeoutMs"] = 300000
         status, body = call(api, "/functions", payload)
         summary = [t["type"] for t in triggers]
         print(f"{name:8} {status} {summary}")

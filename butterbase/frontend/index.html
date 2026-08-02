@@ -80,35 +80,61 @@ const btn = document.getElementById("refresh");
 const esc = (v) =>
   String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function priceRows(extracted) {
-  // extracted.price_breaks is { tier: { qty: unit_price } } as the agent records it.
-  const breaks = extracted && extracted.price_breaks;
-  if (!breaks || typeof breaks !== "object") return [];
-  const rows = [];
-  for (const [tier, qtys] of Object.entries(breaks)) {
-    if (qtys && typeof qtys === "object") {
-      for (const [qty, price] of Object.entries(qtys)) rows.push({ tier, qty, price });
+// The agent nests its payload under `supplier_quote`; handle a flat shape too.
+const coreOf = (extracted) => (extracted && extracted.supplier_quote) || extracted || {};
+
+function priceRows(core) {
+  const breaks = core.price_breaks;
+  // Recorded as an array of {quantity, unit_price, lead_time, part_number, service_tier}.
+  if (Array.isArray(breaks)) return breaks;
+  // Tolerate a {tier: {qty: price}} map as well.
+  if (breaks && typeof breaks === "object") {
+    const rows = [];
+    for (const [service_tier, qtys] of Object.entries(breaks)) {
+      if (qtys && typeof qtys === "object") {
+        for (const [quantity, unit_price] of Object.entries(qtys)) {
+          rows.push({ service_tier, quantity, unit_price });
+        }
+      }
     }
+    return rows;
   }
-  return rows.sort((a, b) => Number(a.qty) - Number(b.qty));
+  return [];
 }
 
+function missingOf(core, quote) {
+  const m = core.missing_fields ?? quote.missing_fields;
+  if (Array.isArray(m)) return m;
+  if (m && typeof m === "object") {
+    // {per_part: [...], quote_level: [...]}
+    return Object.values(m).flatMap((v) => (Array.isArray(v) ? v : []));
+  }
+  return [];
+}
+
+const CELL = (v) => (v === null || v === undefined || v === "" ? "—" : esc(v));
+
 function quoteBlock(q) {
-  const ex = q.extracted || {};
-  const rows = priceRows(ex);
-  const missing = Array.isArray(q.missing_fields) ? q.missing_fields : [];
-  const scalars = Object.entries(ex)
-    .filter(([k, v]) => k !== "price_breaks" && v !== null && typeof v !== "object");
+  const core = coreOf(q.extracted);
+  const rows = priceRows(core);
+  const missing = missingOf(core, q);
+  // Everything the agent recorded that is not a price break or a nested blob.
+  const scalars = Object.entries(core).filter(
+    ([k, v]) => !["price_breaks", "missing_fields", "supplier_name"].includes(k)
+      && v !== null && v !== "" && typeof v !== "object",
+  );
 
   return `
     <div class="card" style="background:#1c1813">
-      <h2>${esc(q.supplier_name || q.supplier_email || "Unknown supplier")}
+      <h2>${esc(q.supplier_name || core.supplier_name || q.supplier_email || "Unknown supplier")}
         <span class="tag quote">${esc(q.status || "")}</span></h2>
       <div class="meta">${esc(q.supplier_email || "")}</div>
       ${rows.length ? `<div class="scroll"><table>
-        <tr><th>Tier</th><th>Qty</th><th>Unit price</th></tr>
-        ${rows.map((r) => `<tr><td>${esc(r.tier)}</td><td>${esc(r.qty)}</td>
-          <td><code>${esc(r.price)}</code></td></tr>`).join("")}
+        <tr><th>Part</th><th>Tier</th><th>Qty</th><th>Unit price</th><th>Lead time</th></tr>
+        ${rows.map((r) => `<tr>
+          <td>${CELL(r.part_number)}</td><td>${CELL(r.service_tier)}</td>
+          <td>${CELL(r.quantity)}</td><td><code>${CELL(r.unit_price)}</code></td>
+          <td>${CELL(r.lead_time)}</td></tr>`).join("")}
       </table></div>` : `<div class="meta">No price breaks recorded yet.</div>`}
       ${scalars.length ? `<div class="scroll" style="margin-top:.7rem"><table>
         ${scalars.map(([k, v]) => `<tr><th style="width:38%">${esc(k)}</th>
@@ -138,12 +164,30 @@ function render(rfqs) {
   }).join("");
 }
 
+// Baked in at deploy time by deploy-frontend.py, which holds the service key.
+// The page therefore shows real data without a public endpoint or any credential
+// in this bundle -- at the cost of being a snapshot rather than live.
+const SNAPSHOT = window.__FORGEFLOW_SNAPSHOT__ || null;
+
+function showSnapshot(note) {
+  if (!SNAPSHOT) return false;
+  render(SNAPSHOT.rfqs || []);
+  const suppliers = (SNAPSHOT.rfqs || []).reduce((n, r) => n + (r.supplier_quotes || []).length, 0);
+  stat.innerHTML = `${(SNAPSHOT.rfqs || []).length} RFQ · ${suppliers} quote${suppliers === 1 ? "" : "s"}
+    · snapshot from ${esc((SNAPSHOT.captured_at || "").replace("T", " ").slice(0, 16))}
+    ${note ? `<span class="missing">— ${esc(note)}</span>` : ""}`;
+  return true;
+}
+
 async function load() {
   btn.disabled = true;
   stat.textContent = "Loading…";
   try {
     const res = await fetch(`${API}/fn/rfqs`, { headers: { accept: "application/json" } });
     if (res.status === 401) {
+      // Expected until the read function is reachable from a browser. Fall back
+      // to the deploy-time snapshot rather than showing the user nothing.
+      if (showSnapshot("live read needs auth; redeploy to refresh")) return;
       stat.textContent = "";
       out.innerHTML = `<div class="error"><strong>The data function requires authentication.</strong>
         Its HTTP trigger is set to <code>auth: required</code>, so a browser with no end-user
@@ -158,6 +202,7 @@ async function load() {
     const suppliers = rfqs.reduce((n, r) => n + (r.supplier_quotes || []).length, 0);
     stat.textContent = `${rfqs.length} RFQ${rfqs.length === 1 ? "" : "s"} · ${suppliers} quote${suppliers === 1 ? "" : "s"}`;
   } catch (err) {
+    if (showSnapshot("live read failed; redeploy to refresh")) return;
     stat.textContent = "";
     out.innerHTML = `<div class="error"><strong>Could not load the comparison table.</strong>
       A failed cross-origin request usually means this site is not in the app's

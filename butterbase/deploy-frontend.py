@@ -54,13 +54,41 @@ def call(url: str, payload=None, method="POST", raw: bytes | None = None,
         return e.code, e.read().decode("utf-8", "replace")[:400]
 
 
+def snapshot_script() -> str:
+    """Bake the current comparison table into the page.
+
+    The read function is auth:required and the app has no end-user auth, so a
+    browser cannot fetch it. This script holds the service key, so it can read
+    the table here and ship the result as data -- no public endpoint, and no
+    credential in the bundle. The cost is that it is a snapshot: redeploy to
+    refresh. The page still tries a live read first and only falls back to this.
+    """
+    from datetime import datetime, timezone
+
+    from forgeflow import butterbase
+
+    payload = {
+        "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "rfqs": butterbase.rfq_states() if butterbase.enabled() else [],
+    }
+    blob = json.dumps(payload, default=str).replace("</", "<\\/")
+    return f"<script>window.__FORGEFLOW_SNAPSHOT__ = {blob};</script>\n"
+
+
 def build_zip() -> bytes:
+    script = snapshot_script()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for path in sorted(SRC.rglob("*")):
-            if path.is_file():
-                # arcname relative to SRC -> index.html lands at the zip root
-                z.write(path, path.relative_to(SRC).as_posix())
+            if not path.is_file():
+                continue
+            data = path.read_bytes()
+            if path.name == "index.html":
+                # Before the app script, so window.__FORGEFLOW_SNAPSHOT__ exists
+                # by the time it reads it.
+                data = data.decode().replace("<script>", script + "<script>", 1).encode()
+            # arcname relative to SRC -> index.html lands at the zip root
+            z.writestr(path.relative_to(SRC).as_posix(), data)
     return buf.getvalue()
 
 

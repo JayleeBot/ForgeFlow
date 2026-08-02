@@ -37,7 +37,10 @@ from forgeflow.graph import GraphMailbox
 from forgeflow.models import EmailMessage
 from forgeflow.store import connect, rfq_states
 
-MODEL = {"id": "claude-opus-5", "effort": "xhigh"}
+# Sonnet 5 at its default effort (high). RFQ triage is classification plus a
+# short chase email -- opus-5 at xhigh was costing ~$0.11 a session, roughly half
+# of it output tokens, for work that does not need that depth.
+MODEL = {"id": "claude-sonnet-5"}
 SEEN_PATH = Path("data/managed_agent_seen.json")
 POLL_INTERVAL_SECONDS = 60
 _PROMPTS = Path(__file__).parent / "prompts"

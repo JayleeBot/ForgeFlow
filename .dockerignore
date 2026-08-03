@@ -1,0 +1,27 @@
+# Secrets must come from --env-file or the orchestrator, never the image.
+.env
+.env.*
+!.env.example
+
+.git/
+.github/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.deepeval/
+.claude/
+
+# Local state the container should not inherit -- seen-state lives in Butterbase.
+data/forgeflow.db
+data/forgeflow.db-*
+data/outbox/
+data/managed_agent_seen.json
+logs/
+runs/
+
+next-ui/
+butterbase/frontend/
+docs/
+*.md
+!README.md

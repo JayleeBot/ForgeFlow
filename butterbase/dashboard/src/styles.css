@@ -1,0 +1,172 @@
+/* Light theme. Every colour is a token here, so a dark mode later means one more
+   block redefining these rather than edits scattered through the file.
+
+   Colour is reserved for what the buyer must act on: overdue is red, due soon is
+   amber, the best value in a comparison is green. Everything else stays grey, so
+   the few coloured things on a screen are the ones worth looking at. */
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --line: #e2e5ea;
+  --line-soft: #eef0f3;
+  --ink: #1c1f24;
+  --muted: #6b7280;
+  --amber: #b45309;
+  --amber-soft: #fef6e7;
+  --green: #047857;
+  --green-soft: #ecfdf5;
+  --red: #b42318;
+  --red-soft: #fef3f2;
+  --link: #1d4ed8;
+  --focus: #2563eb;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .86em; }
+
+.wrap { max-width: 1200px; margin: 0 auto; padding: 2rem 1rem 4rem; }
+
+button { font: inherit; cursor: pointer; }
+input[type="search"]:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--focus); outline-offset: 2px;
+}
+
+button.link {
+  background: none; border: 0; padding: 0; color: var(--link); font-weight: 600; text-align: left;
+}
+button.link:hover { text-decoration: underline; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.top {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;
+}
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: -.02em; }
+.home-link { background: none; border: 0; padding: 0; font-weight: 700; color: var(--ink); }
+h2 { font-size: 1.15rem; margin: 0; }
+.top p { margin: .15rem 0 0; font-size: .88rem; }
+.top-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+
+input[type="search"] {
+  width: 19rem; max-width: 100%; padding: .5rem .7rem; font: inherit; font-size: .9rem;
+  color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+
+button.primary {
+  background: var(--ink); color: #fff; border: 0; border-radius: 8px;
+  padding: .5rem .9rem; font-weight: 600; font-size: .88rem;
+}
+button.primary:disabled { opacity: .55; cursor: default; }
+
+.banner {
+  flex-basis: 100%; border: 1px solid var(--line); border-radius: 8px;
+  padding: .6rem .8rem; font-size: .87rem; background: var(--panel);
+}
+.banner.good { border-color: #a7dfc8; background: var(--green-soft); color: var(--green); }
+.banner.bad { border-color: #f1b8b2; background: var(--red-soft); color: var(--red); }
+
+.crumb { margin-bottom: .8rem; font-size: .9rem; }
+.view-title { margin-bottom: .8rem; }
+
+/* ── Home buckets ──────────────────────────────────────────────────────── */
+.buckets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+@media (max-width: 760px) { .buckets { grid-template-columns: 1fr; } }
+
+.bucket {
+  display: flex; flex-direction: column; gap: .2rem; text-align: left;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 1.2rem 1.3rem 1.3rem; color: var(--ink); min-height: 11rem;
+}
+.bucket:hover { border-color: #c4cad3; box-shadow: 0 2px 10px rgba(16, 24, 40, .05); }
+.bucket-title { font-size: .82rem; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.bucket-n { font-size: 2.6rem; font-weight: 650; letter-spacing: -.03em; line-height: 1.15; }
+.bucket-sub { font-size: .88rem; color: var(--muted); }
+.clock-list { display: flex; flex-direction: column; gap: .15rem; }
+.totals { margin-top: 1rem; }
+
+/* Follow-up clock: the only red on the home screen. */
+.clock { font-size: .86rem; color: var(--muted); }
+.clock.overdue { color: var(--red); font-weight: 650; }
+.clock.due_soon { color: var(--amber); font-weight: 650; }
+.clock.on_track { color: var(--muted); }
+
+/* ── Panels and tables ─────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 1rem 1.15rem;
+}
+.muted { color: var(--muted); font-size: .88rem; margin: .2rem 0; }
+.empty { color: var(--muted); text-align: center; padding: 2.5rem 1rem; font-size: .92rem; margin: 0; }
+.error { border-color: #f1b8b2; background: var(--red-soft); }
+.error code { display: block; margin-top: .6rem; word-break: break-all; color: var(--muted); }
+.hint { margin-top: .7rem; }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: .6rem .7rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+thead th {
+  font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 650;
+  color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: #fafbfc; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sub { display: block; font-size: .78rem; color: var(--muted); font-weight: 400; }
+td.num .sub { white-space: normal; }
+
+/* ── Part view ─────────────────────────────────────────────────────────── */
+.detail-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: .75rem; flex-wrap: wrap; margin-bottom: .9rem;
+}
+.detail-head h2 { font-size: 1.35rem; letter-spacing: -.01em; }
+
+.best { color: var(--green); font-weight: 700; background: var(--green-soft); }
+
+.tier {
+  display: inline-block; padding: .1rem .5rem; border-radius: 999px; white-space: nowrap;
+  font-size: .76rem; font-weight: 600; background: var(--line-soft); border: 1px solid var(--line);
+}
+
+.state { font-size: .84rem; white-space: nowrap; }
+.state.ready { color: var(--green); font-weight: 600; }
+.state.needs_input { color: var(--amber); font-weight: 600; }
+.state.working { color: var(--muted); }
+
+/* ── Needs your input cards ────────────────────────────────────────────── */
+.cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .75rem; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: .85rem 1rem; }
+.card-head { display: flex; justify-content: space-between; gap: .75rem; align-items: baseline; flex-wrap: wrap; }
+.card-foot { display: flex; justify-content: space-between; gap: .75rem; align-items: center; margin-top: .5rem; flex-wrap: wrap; }
+.tag {
+  font-size: .74rem; font-weight: 650; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--amber); background: var(--amber-soft); border: 1px solid #f3d9a8;
+  border-radius: 999px; padding: .1rem .5rem; white-space: nowrap;
+}
+.quote-text { margin: .5rem 0; padding-left: .8rem; border-left: 2px solid var(--amber); }
+
+/* ── Source emails and runs ────────────────────────────────────────────── */
+details { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: .6rem; }
+details.inline { border-top: 0; padding-top: 0; margin-top: .4rem; }
+summary {
+  cursor: pointer; color: var(--muted); font-size: .8rem;
+  text-transform: uppercase; letter-spacing: .04em; font-weight: 650;
+}
+.msg { border-left: 2px solid var(--line); padding: .1rem 0 .1rem .8rem; margin: .75rem 0; }
+.msg-head { color: var(--muted); font-size: .8rem; margin-bottom: .3rem; }
+.msg-body { white-space: pre-wrap; font-size: .86rem; max-height: 15rem; overflow: auto; }
+.reply { border-left: 2px solid var(--green); margin: .6rem 0 .2rem; padding-left: .8rem; }
+.reply .msg-head { color: var(--green); }
+.run { font-size: .82rem; color: var(--muted); padding: .25rem 0; }
+.run a { color: var(--link); }
+.ok { color: var(--green); }

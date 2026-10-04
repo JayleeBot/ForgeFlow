@@ -2,6 +2,7 @@
 
     python butterbase/deploy-frontend.py                  build + deploy
     python butterbase/deploy-frontend.py --snapshot-only   dev data, no deploy
+    python butterbase/deploy-frontend.py --demo            public demo: sample data only
 
 `npm run build` produces dashboard/dist/, which is what gets zipped. Then three
 steps, all against api.butterbase.ai:
@@ -87,13 +88,16 @@ def snapshot_script() -> str:
     return f"<script>window.__FORGEFLOW_SNAPSHOT__ = {blob};</script>\n"
 
 
-def npm_build() -> None:
-    print(f"building {APP.name}/ …")
-    subprocess.run(["npm", "run", "build"], cwd=APP, check=True)
+def npm_build(demo: bool) -> None:
+    script = "build:demo" if demo else "build"
+    print(f"building {APP.name}/ ({script}) …")
+    subprocess.run(["npm", "run", script], cwd=APP, check=True)
 
 
-def build_zip() -> bytes:
-    script = snapshot_script()
+def build_zip(demo: bool) -> bytes:
+    # The demo carries its own invented data. Reading the real tables here, even
+    # to discard them, would be one bug away from publishing supplier quotes.
+    script = "" if demo else snapshot_script()
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for path in sorted(SRC.rglob("*")):
@@ -105,7 +109,7 @@ def build_zip() -> bytes:
                 # and a public JSON of supplier quotes is not something to ship.
                 continue
             data = path.read_bytes()
-            if path.name == "index.html":
+            if path.name == "index.html" and script:
                 # First thing in the head, so window.__FORGEFLOW_SNAPSHOT__ is
                 # set before anything reads it.
                 data = data.decode().replace("<head>", "<head>\n" + script, 1).encode()
@@ -128,10 +132,11 @@ def main() -> None:
         os.environ["BUTTERBASE_APP_URL"].rstrip("/").rsplit("/", 1)[-1]
     api = f"{BASE}/v1/{app_id}"
 
-    npm_build()
+    demo = "--demo" in sys.argv
+    npm_build(demo)
     if not (SRC / "index.html").exists():
         raise SystemExit(f"No index.html in {SRC}")
-    blob = build_zip()
+    blob = build_zip(demo)
     print(f"zip: {len(blob):,} bytes, {len(zipfile.ZipFile(io.BytesIO(blob)).namelist())} file(s)")
 
     code, body = call(f"{api}/frontend/deployments", {"app_id": app_id, "framework": "static"})

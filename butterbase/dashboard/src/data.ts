@@ -16,6 +16,9 @@ declare global {
   }
 }
 
+/** `vite --mode demo` / `vite build --mode demo`: sample data, no trigger button. */
+export const IS_DEMO = import.meta.env.MODE === "demo";
+
 /**
  * The snapshot is baked into index.html at deploy time by deploy-frontend.py,
  * which holds the service key. In local dev there is no bake, so fall back to
@@ -23,6 +26,9 @@ declare global {
  * gitignored, because it holds real supplier data.
  */
 export async function loadSnapshot(): Promise<Snapshot> {
+  // The public demo ships invented data and never real quotes. Imported lazily,
+  // so the sample data is not even in the production bundle.
+  if (IS_DEMO) return (await import("./demo")).demoSnapshot(new Date());
   if (window.__FORGEFLOW_SNAPSHOT__) return window.__FORGEFLOW_SNAPSHOT__;
   const res = await fetch("/snapshot.json", { headers: { accept: "application/json" } });
   if (!res.ok) throw new Error(`No baked snapshot, and /snapshot.json returned HTTP ${res.status}`);
@@ -140,6 +146,30 @@ export function referenceOf(rfq: Rfq): string {
   return stripPrefix(rfq.subject || rfq.id);
 }
 
+/** Buyer-facing names for the extractor's field keys. */
+const FIELD_NAMES: Record<string, string> = {
+  unit_price: "Unit price",
+  lead_time: "Lead time",
+  moq: "MOQ",
+  nre: "NRE",
+  coo: "Country of origin",
+  payment_terms: "Payment terms",
+  quote_valid_until: "Quote validity",
+  part_number: "Part number",
+  manufacturer: "Manufacturer",
+};
+
+/**
+ * "unit_price (IC-5521 at 2500 pcs)" -> "Unit price (IC-5521 at 2500 pcs)".
+ * Only the leading key is renamed; the part and tier context is kept as is.
+ */
+export function readableField(field: string): string {
+  const m = field.match(/^([a-z_]+)(.*)$/);
+  if (!m) return field;
+  const name = FIELD_NAMES[m[1]] ?? m[1].replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return name + m[2];
+}
+
 // ── Follow-up clock ──────────────────────────────────────────────────────────
 // A supplier gets FOLLOW_UP_BUSINESS_DAYS to answer the agent's follow-up before
 // it counts as overdue. Weekends do not count.
@@ -236,7 +266,7 @@ export function buildEntries(rfqs: Rfq[], now: Date): QuoteEntry[] {
     const core = coreOf(quote.extracted);
     const all = missingOf(core, quote);
     const asksBuyer = all.some((f) => f.toLowerCase().includes(BUYER_INPUT));
-    const missing = all.filter((f) => !f.toLowerCase().includes(BUYER_INPUT));
+    const missing = all.filter((f) => !f.toLowerCase().includes(BUYER_INPUT)).map(readableField);
 
     const sent = runsSent(thread.runs ?? []).sort();
     const lastSent = sent.length ? sent[sent.length - 1] : null;
@@ -301,6 +331,7 @@ export type PartRow = {
 export type Part = {
   partNumber: string;
   manufacturer: string | null;
+  description: string | null;
   rows: PartRow[];
   /** Quantity columns, ascending. "" is a price quoted with no quantity. */
   quantities: string[];
@@ -345,6 +376,7 @@ export function buildParts(entries: QuoteEntry[]): Part[] {
         part = {
           partNumber,
           manufacturer: (core.manufacturer as string) || reqs.manufacturer || null,
+          description: (core.description as string) || (reqs.description as string) || null,
           rows: [],
           quantities: [],
           bestPrice: null,

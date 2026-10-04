@@ -190,6 +190,12 @@ ordering obvious rather than load-order dependent. `dist/snapshot.json` is
 skipped on purpose: it is the dev-only copy (see below), and a public JSON of
 supplier quotes is not something to serve.
 
+For the public demo, `python3 butterbase/deploy-frontend.py --demo` builds with
+`vite --mode demo`: the page renders invented data from `dashboard/src/demo.ts`
+(dates generated relative to today, so the follow-up clocks never go stale),
+hides the trigger button, and the script never reads the real tables at all.
+`npm run dev:demo` runs the same thing locally.
+
 For local work, `python3 butterbase/deploy-frontend.py --snapshot-only` writes
 `dashboard/public/snapshot.json`, which `npm run dev` serves and the page falls
 back to when no bake is present. It is gitignored — it holds real quotes.

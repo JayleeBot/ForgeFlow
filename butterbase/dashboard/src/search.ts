@@ -7,7 +7,7 @@ import type { Part } from "./data";
  * subject).
  */
 export function searchableText(part: Part): string {
-  const bits: (string | null | undefined)[] = [part.partNumber, part.manufacturer];
+  const bits: (string | null | undefined)[] = [part.partNumber, part.manufacturer, part.description];
   for (const { entry } of part.rows) {
     bits.push(
       entry.supplier,

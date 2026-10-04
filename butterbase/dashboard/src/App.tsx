@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { buildEntries, buildParts, loadSnapshot, partsOfEntry, when } from "./data";
+import { IS_DEMO, buildEntries, buildParts, loadSnapshot, partsOfEntry, when } from "./data";
 import type { QuoteEntry } from "./data";
 import { matches, searchableText } from "./search";
 import type { Snapshot } from "./types";
@@ -13,6 +13,17 @@ import TriggerButton from "./components/TriggerButton";
 import WorkingList from "./components/WorkingList";
 
 type View = { name: "home" } | { name: Bucket } | { name: "part"; part: string; back: View };
+
+/** Mark: two offset chevrons, the "flow" of a quote moving through the pipeline. */
+function Logo() {
+  return (
+    <svg className="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="var(--ink)" />
+      <path d="M9 10l6 6-6 6" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M17 10l6 6-6 6" fill="none" stroke="#2a78d6" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 const TITLE: Record<Bucket, string> = {
   ready: "Ready for review",
@@ -85,7 +96,16 @@ export default function App() {
       </section>
     );
   } else if (view.name === "home") {
-    body = <Home entries={entries} partCount={parts.length} onOpen={(b) => setView({ name: b })} />;
+    body = (
+      <Home
+        entries={entries}
+        parts={parts}
+        buyer={IS_DEMO ? "Dana" : null}
+        onOpen={(b) => setView({ name: b })}
+        onOpenPart={openPart}
+        partOf={partOf}
+      />
+    );
   } else if (view.name === "part") {
     const part = parts.find((p) => p.partNumber === view.part);
     crumb = {
@@ -124,15 +144,25 @@ export default function App() {
   return (
     <div className="wrap">
       <header className="top">
-        <div>
-          <h1>
-            <button className="home-link" onClick={() => { setView({ name: "home" }); setQuery(""); }}>
-              ForgeFlow
-            </button>
-          </h1>
+        <div className="brand">
+          <button
+            className="home-link"
+            onClick={() => {
+              setView({ name: "home" });
+              setQuery("");
+            }}
+            aria-label="ForgeFlow home"
+          >
+            <Logo />
+            <span>ForgeFlow</span>
+          </button>
           <p className="muted">
             Buyer dashboard
-            {snapshot?.captured_at && ` · data as of ${when(snapshot.captured_at)}`}
+            {IS_DEMO ? (
+              <span className="demo-pill">Demo · sample data</span>
+            ) : (
+              snapshot?.captured_at && ` · data as of ${when(snapshot.captured_at)}`
+            )}
           </p>
         </div>
         <div className="top-actions">

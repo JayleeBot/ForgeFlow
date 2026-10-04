@@ -1,23 +1,33 @@
 import { FOLLOW_UP_BUSINESS_DAYS, shortDate } from "../data";
 import type { QuoteEntry } from "../data";
+import { ClockIcon, ClockMeter } from "../charts/Clock";
 
 /** Overdue first, then by how little time is left; not-yet-chased last. */
 const urgency = (e: QuoteEntry) => (e.followUp ? e.followUp.daysLeft : Number.POSITIVE_INFINITY);
 
 function Status({ e }: { e: QuoteEntry }) {
   const f = e.followUp;
-  if (!f) return <span className="clock pending">Follow-up not sent yet</span>;
-  if (f.status === "overdue") {
-    const late = -f.daysLeft;
+  if (!f) {
     return (
-      <span className="clock overdue">
-        Overdue{late > 0 ? ` ${late} business day${late === 1 ? "" : "s"}` : ""} — chase again
+      <span className="clock pending">
+        <ClockIcon status="pending" />
+        Follow-up not sent yet
       </span>
     );
   }
+  const late = -f.daysLeft;
+  const text =
+    f.status === "overdue"
+      ? `Overdue${late > 0 ? ` ${late} business day${late === 1 ? "" : "s"}` : ""} — chase again`
+      : `${f.daysLeft} business day${f.daysLeft === 1 ? "" : "s"} left`;
   return (
-    <span className={`clock ${f.status}`}>
-      {f.daysLeft} business day{f.daysLeft === 1 ? "" : "s"} left
+    <span className="status-cell">
+      <span className={`clock ${f.status}`}>
+        <ClockIcon status={f.status} />
+        {text}
+      </span>
+      <ClockMeter followUp={f} />
+      <span className="sub">Reply due {shortDate(f.due)}</span>
     </span>
   );
 }

@@ -35,7 +35,7 @@ non-obvious reason documented under *Token rotation* below — do not delete it.
 
 ## 1. Butterbase (current production)
 
-App `app_nkpie8ug8oun` · API `https://api.butterbase.ai/v1/app_nkpie8ug8oun` ·
+App `app_m8dvgmb8f2ti` · API `https://api.butterbase.ai/v1/app_m8dvgmb8f2ti` ·
 site `https://forgeflow-rfq.butterbase.dev`
 
 Platform quirks — schema format, the CORS trap, `timeoutMs`, the auth model —

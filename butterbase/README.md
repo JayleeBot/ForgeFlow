@@ -4,7 +4,7 @@ Field notes for this app. Written from what the API actually does, which differs
 from the published docs in several places — each difference below cost a round
 trip to discover, so check here before trusting docs.butterbase.ai.
 
-App: `app_nkpie8ug8oun` · API `https://api.butterbase.ai/v1/app_nkpie8ug8oun` ·
+App: `app_m8dvgmb8f2ti` · API `https://api.butterbase.ai/v1/app_m8dvgmb8f2ti` ·
 site `https://forgeflow-rfq.butterbase.dev`
 
 ## Layout
@@ -14,11 +14,11 @@ butterbase/
   schema.json           declarative schema (source of truth for the tables)
   deploy.py             apply schema.json          (dry run unless --apply)
   deploy-functions.py   deploy functions/*.ts
-  deploy-frontend.py    zip + upload + start frontend/, baking in a data snapshot
+  deploy-frontend.py    build + zip + upload + start dashboard/, baking in a data snapshot
   set-secrets.py        copy runtime secrets from .env into the app env
   push-rotated-token.py CI-only: hand the rotated Outlook token to Butterbase
   functions/*.ts        server-side functions
-  frontend/index.html   the dashboard
+  dashboard/            the dashboard: React + Vite + TypeScript
 ```
 
 Credentials always come from `.env` via `forgeflow.config.load_env` — nothing is
@@ -182,6 +182,38 @@ Frameworks: `static`, `react-vite` (`dist/`), `nextjs-static` (`out/`; needs
 - Free plan allows 1 deployment per app; deploying again replaces it.
 - CORS lives in `allowed_origins` on the app config, which is **read-only over
   the API** (`GET /v1/{app}/config`). Change it in the dashboard UI.
+
+`deploy-frontend.py` runs `npm run build` in `dashboard/` and zips `dist/`,
+injecting the data snapshot as the first thing in `<head>`. Vite's own script is
+`type="module"` and therefore deferred, but putting the bake first keeps the
+ordering obvious rather than load-order dependent. `dist/snapshot.json` is
+skipped on purpose: it is the dev-only copy (see below), and a public JSON of
+supplier quotes is not something to serve.
+
+For local work, `python3 butterbase/deploy-frontend.py --snapshot-only` writes
+`dashboard/public/snapshot.json`, which `npm run dev` serves and the page falls
+back to when no bake is present. It is gitignored — it holds real quotes.
+
+How the dashboard reads these tables, since none of it is stored directly:
+
+- **The unit is the supplier quote.** Each quote has exactly one buyer-facing
+  state, so the home counts never double up. A supplier repeated across threads
+  of the same RFQ is counted once (newest quote wins).
+- **`status` is the email classification**, not the three-state model. The state
+  is derived:
+  - *Ready for review*: `missing_fields` is empty.
+  - *Needs your input*: the supplier asked the buyer something
+    (`buyer_input_required`), or the agent drafted a follow-up that was never
+    sent. With `FORGEFLOW_MANAGED_AGENT_AUTOSEND` off, every chase lands here.
+  - *Agent working*: a follow-up went out (`agent_seen.sent_reply`). The supplier
+    has 3 business days from `processed_at` before it shows as overdue.
+- **Comparison is by part number, not by thread.** A thread holds at most one
+  supplier, because the buyer mails each one separately. Grouping price breaks
+  by `part_number` is what puts suppliers side by side. Each supplier and
+  service tier is its own row: Quick Turn and Standard are different offers.
+
+Ideas deferred from this version, price history among them, are in
+`docs/dashboard_stage_b.md`.
 
 ## Discovery method
 

@@ -14,4 +14,10 @@ logs/
 next-ui/node_modules/
 next-ui/.next/
 next-ui/out/
+next-ui/*.tsbuildinfo
 runs/
+
+butterbase/dashboard/node_modules/
+butterbase/dashboard/dist/
+# Real supplier quotes, pulled for local dev by deploy-frontend.py --snapshot-only
+butterbase/dashboard/public/snapshot.json

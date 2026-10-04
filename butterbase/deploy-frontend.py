@@ -1,8 +1,10 @@
-"""Deploy butterbase/frontend/ to the app's live URL.
+"""Build butterbase/dashboard/ and deploy it to the app's live URL.
 
-    python butterbase/deploy-frontend.py
+    python butterbase/deploy-frontend.py                  build + deploy
+    python butterbase/deploy-frontend.py --snapshot-only   dev data, no deploy
 
-Three steps, all against api.butterbase.ai:
+`npm run build` produces dashboard/dist/, which is what gets zipped. Then three
+steps, all against api.butterbase.ai:
 
   POST /v1/{app}/frontend/deployments   -> {id, uploadUrl}   (presigned R2, 15 min)
   PUT  {uploadUrl}                       -> the zip
@@ -12,12 +14,17 @@ The zip must have index.html at its ROOT with POSIX separators, or the platform
 serves every file as text/html and the page comes up blank. zipfile writes
 forward slashes on every OS, so building it here rather than shelling out to a
 system zip tool avoids that class of bug entirely.
+
+`--snapshot-only` writes the same data to dashboard/public/snapshot.json, which
+`npm run dev` serves and the page falls back to when nothing was baked in. It is
+gitignored: it holds real supplier quotes.
 """
 from __future__ import annotations
 
 import io
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
@@ -28,7 +35,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from forgeflow.config import load_env
 
-SRC = Path(__file__).resolve().parent / "frontend"
+APP = Path(__file__).resolve().parent / "dashboard"
+SRC = APP / "dist"
 BASE = "https://api.butterbase.ai"
 
 
@@ -54,26 +62,34 @@ def call(url: str, payload=None, method="POST", raw: bytes | None = None,
         return e.code, e.read().decode("utf-8", "replace")[:400]
 
 
-def snapshot_script() -> str:
-    """Bake the current comparison table into the page.
+def snapshot_payload() -> dict:
+    """The current comparison table, as the dashboard wants to read it.
 
     The read function is auth:required and the app has no end-user auth, so a
     browser cannot fetch it. This script holds the service key, so it can read
     the table here and ship the result as data -- no public endpoint, and no
     credential in the bundle. The cost is that it is a snapshot: redeploy to
-    refresh. The page still tries a live read first and only falls back to this.
+    refresh.
     """
     from datetime import datetime, timezone
 
     from forgeflow import butterbase
 
-    payload = {
+    return {
         "captured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "rfqs": butterbase.dashboard_payload() if butterbase.enabled() else [],
         "trigger_url": f"{os.environ.get('BUTTERBASE_APP_URL', '').rstrip('/')}/fn/trigger",
     }
-    blob = json.dumps(payload, default=str).replace("</", "<\\/")
+
+
+def snapshot_script() -> str:
+    blob = json.dumps(snapshot_payload(), default=str).replace("</", "<\\/")
     return f"<script>window.__FORGEFLOW_SNAPSHOT__ = {blob};</script>\n"
+
+
+def npm_build() -> None:
+    print(f"building {APP.name}/ …")
+    subprocess.run(["npm", "run", "build"], cwd=APP, check=True)
 
 
 def build_zip() -> bytes:
@@ -83,11 +99,16 @@ def build_zip() -> bytes:
         for path in sorted(SRC.rglob("*")):
             if not path.is_file():
                 continue
+            if path.name == "snapshot.json":
+                # Vite copies public/ into dist/, but the dev snapshot has no
+                # business being served: the data is baked into the page below,
+                # and a public JSON of supplier quotes is not something to ship.
+                continue
             data = path.read_bytes()
             if path.name == "index.html":
-                # Before the app script, so window.__FORGEFLOW_SNAPSHOT__ exists
-                # by the time it reads it.
-                data = data.decode().replace("<script>", script + "<script>", 1).encode()
+                # First thing in the head, so window.__FORGEFLOW_SNAPSHOT__ is
+                # set before anything reads it.
+                data = data.decode().replace("<head>", "<head>\n" + script, 1).encode()
             # arcname relative to SRC -> index.html lands at the zip root
             z.writestr(path.relative_to(SRC).as_posix(), data)
     return buf.getvalue()
@@ -95,10 +116,19 @@ def build_zip() -> bytes:
 
 def main() -> None:
     load_env()
+
+    if "--snapshot-only" in sys.argv:
+        out = APP / "public" / "snapshot.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(snapshot_payload(), default=str, indent=2))
+        print(f"wrote {out} ({out.stat().st_size:,} bytes) — `npm run dev` will serve it")
+        return
+
     app_id = os.environ.get("BUTTERBASE_APP_ID") or \
         os.environ["BUTTERBASE_APP_URL"].rstrip("/").rsplit("/", 1)[-1]
     api = f"{BASE}/v1/{app_id}"
 
+    npm_build()
     if not (SRC / "index.html").exists():
         raise SystemExit(f"No index.html in {SRC}")
     blob = build_zip()

@@ -23,6 +23,27 @@ compare suppliers across it at a glance.
 
 ## Stage B
 
+### 0. Take down the previous app's dashboard
+
+**Do this first.** It is data hygiene, not a feature.
+
+The previous Butterbase app (`app_nkpie8ug8oun`) still serves its 2026-08-02
+deploy of the old single-page dashboard, which has a real data snapshot baked
+into its HTML. The demo deploy did not touch it because it is a different app,
+and the `.env` here holds only the current app's key. The current app
+(`app_m8dvgmb8f2ti`) serves only the demo.
+
+Options, in order of preference:
+
+1. In the Butterbase dashboard, delete the old app's frontend deployment, or
+   the old app entirely if nothing else uses it.
+2. Or put the old app's key in `.env` and run `deploy-frontend.py --demo`
+   against it. The free plan keeps one deployment per app, so the demo
+   replaces the old page.
+
+Done when the old app's site no longer contains `__FORGEFLOW_SNAPSHOT__`, or no
+longer resolves.
+
 ### 1. Price history: same part, same supplier, over time
 
 > "For the same part, last year the supplier quoted one price and this year

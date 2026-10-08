@@ -5,7 +5,7 @@ from the published docs in several places — each difference below cost a round
 trip to discover, so check here before trusting docs.butterbase.ai.
 
 App: `app_m8dvgmb8f2ti` · API `https://api.butterbase.ai/v1/app_m8dvgmb8f2ti` ·
-site `https://forgeflow-rfq.butterbase.dev`
+site `https://forgeflow.butterbase.dev`
 
 ## Layout
 

@@ -1,7 +1,7 @@
 # Buyer Dashboard — Stage B Ideas
 
 Stage A is the buyer dashboard in `butterbase/dashboard/`, deployed to
-`forgeflow-rfq.butterbase.dev`. It is read-only and renders a data snapshot
+`forgeflow.butterbase.dev`. It is read-only and renders a data snapshot
 baked in at deploy time. This file collects what was deliberately left out of
 Stage A, with the reason each one was deferred, so the next round starts from
 the buyer's actual needs rather than from scratch.

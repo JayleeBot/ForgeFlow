@@ -65,6 +65,9 @@ requested_tiers: verbatim labels when the buyer asks for more than one named pri
 our_part_number / manufacturer / mfg_part_number: verbatim from the buyer's RFQ. Record
   mfg_part_number ONLY when genuinely distinct from our_part_number — a single part number
   with no separate manufacturer number is our_part_number and leaves this null.
+response_due_date: the date the buyer asks suppliers to respond by, as YYYY-MM-DD. Resolve
+  a relative date ("by Friday") against the Sent date of the buyer's RFQ email. Null when
+  the buyer sets none. A target delivery date is not a response date.
 
 When the thread contains NO buyer RFQ — a supplier email without the request that prompted
 it — do not collapse required_fields to price_breaks alone. Assume the standard procurement

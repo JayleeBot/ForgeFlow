@@ -10,6 +10,9 @@ scan.ts is deployed twice from one source:
 
 Two deployments rather than two files so the scan logic has one definition; the
 handler tells them apart by its own request path.
+
+  followups  cron weekdays 14:00 UTC (9-10am US Eastern), HTTP trigger
+             auth:required; chases suppliers who have not answered an RFQ
 """
 from __future__ import annotations
 
@@ -34,8 +37,12 @@ PLAN = {
     ],
     # Gated inside the handler, not by the platform -- see scan.ts.
     "trigger": [{"type": "http", "config": {"auth": "none"}}],
+    "followups": [
+        {"type": "cron", "config": {"schedule": "0 14 * * 1-5"}},
+        {"type": "http", "config": {"auth": "required"}},
+    ],
 }
-SOURCE = {"rfqs": "rfqs.ts", "scan": "scan.ts", "trigger": "scan.ts"}
+SOURCE = {"rfqs": "rfqs.ts", "scan": "scan.ts", "trigger": "scan.ts", "followups": "followups.ts"}
 
 
 def call(api: str, path: str, payload=None, method="POST"):

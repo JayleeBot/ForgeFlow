@@ -147,6 +147,18 @@ the key as its body is a simple request and goes straight through. Plain `GET`s
 are simple too, which is why cross-origin reads worked while the trigger did
 not. The handler accepts either form; only the browser needs the body variant.
 
+### Supplier follow-ups (`followups.ts`)
+
+Runs on cron at 14:00 UTC on weekdays and chases any supplier who has not
+replied to the buyer's RFQ: 2 business days before the RFQ's response date, on
+the response date when the RFQ left less notice than that, or 3 business days
+after sending when no date was given. It is plain date arithmetic plus a fixed
+template, with no model call. Each supplier is chased once (`rfq_followups`).
+`FORGEFLOW_MANAGED_AGENT_AUTOSEND` controls whether it sends, exactly as it does
+for `scan`; with it off, the text is stored in `rfq_followups` instead. Its HTTP
+trigger is `auth: required`, so in practice only cron runs it. Read each run's
+result in `/logs`. Tests: `node --test butterbase/functions/followups.test.ts`.
+
 ## App environment
 
 ```

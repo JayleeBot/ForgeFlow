@@ -98,6 +98,23 @@
             "unique": true
           }
         }
+      },
+
+      "rfq_followups": {
+        "columns": {
+          "id": { "type": "text", "primaryKey": true },
+          "rfq_id": {
+            "type": "text",
+            "nullable": false,
+            "references": { "table": "rfqs", "column": "id" }
+          },
+          "supplier_email": { "type": "text", "nullable": false },
+          "due_date": { "type": "date" },
+          "follow_up_on": { "type": "date", "nullable": false },
+          "body": { "type": "text", "nullable": false },
+          "sent": { "type": "boolean", "nullable": false, "default": "false" },
+          "created_at": { "type": "timestamptz", "nullable": false, "default": "now()" }
+        }
       }
     }
   }

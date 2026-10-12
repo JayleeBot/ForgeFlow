@@ -66,9 +66,11 @@ triggers nothing — see issue #4 below.
 ### High Priority
 
 - [ ] **Issue #4 — follow up suppliers who have not replied by the RFQ due date.**
-  Decided 2026-10-11. Implemented on branch `issue-4-rfq-followup`, not yet deployed
-  (needs schema apply, managed-agent prompt deploy, function deploy):
-  - Extract `response_due_date` from the buyer's RFQ into `rfq_requirements`; store on `rfqs`.
+  Merged (PR #22) and deployed 2026-10-11 with autosend OFF: it records the chases it
+  would send in `rfq_followups` and emails no one. Remaining: review those records for
+  1–2 weeks, then decide whether to turn autosend on, and close the issue.
+  - Extract `response_due_date` from the buyer's RFQ into `rfq_requirements` (stored in
+    `rfqs.collection_form`).
   - Trigger: 2 business days before the due date; on the due date if the RFQ went out with
     less than 2 business days left; no due date → 3 business days after the RFQ was sent.
   - Skip when the supplier has already replied (match on email domain).

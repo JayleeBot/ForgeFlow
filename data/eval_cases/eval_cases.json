@@ -196,7 +196,8 @@
     "thread_emails": [
       "data/sample_emails/thread_offshelf_01_e1.eml"
     ],
-    "expected_action": "none"
+    "expected_action": "none",
+    "expected_response_due_date": "2026-05-23"
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_01_e2.eml",
@@ -313,7 +314,8 @@
     "thread_emails": [
       "data/sample_emails/thread_pcb_01_e1.eml"
     ],
-    "expected_action": "none"
+    "expected_action": "none",
+    "expected_response_due_date": "2026-05-23"
   },
   {
     "email_file": "data/sample_emails/thread_pcb_01_e2.eml",
@@ -639,7 +641,8 @@
     "expected_payment_terms": false,
     "expected_missing_fields": [],
     "notes": "Standalone buyer RFQ for Ethernet Transformer H1102NL. Buyer is requesting pricing \u2014 direction is buyer-to-supplier. Must be classified as rfq_sent. Tests the most basic rfq_sent case without thread context. Quantities: 2000, 5000, 10000. Required fields: price_breaks, lead_time, coo, payment_terms, moq.",
-    "expected_action": "none"
+    "expected_action": "none",
+    "expected_response_due_date": "2026-06-06"
   },
   {
     "email_file": "data/sample_emails/11_payment_terms_tbd.eml",
@@ -854,7 +857,8 @@
     "thread_emails": [
       "data/sample_emails/thread_offshelf_mfg_01_e1.eml"
     ],
-    "expected_action": "none"
+    "expected_action": "none",
+    "expected_response_due_date": null
   },
   {
     "email_file": "data/sample_emails/thread_offshelf_mfg_01_e2_match.eml",
@@ -919,7 +923,8 @@
     },
     "expected_requested_tiers": [],
     "expected_mfg_part_number": "NV-2403-DIN",
-    "notes": "Buyer RFQ, agent CC'd. Creates the collection form: quantities 250/500/1000, required = price_breaks, lead_time, moq, payment_terms, coo (NRE is NOT requested \u2014 off-shelf part). No supplier quote yet, so no action."
+    "notes": "Buyer RFQ, agent CC'd. Creates the collection form: quantities 250/500/1000, required = price_breaks, lead_time, moq, payment_terms, coo (NRE is NOT requested \u2014 off-shelf part). No supplier quote yet, so no action.",
+    "expected_response_due_date": "2026-07-29"
   },
   {
     "email_file": "data/sample_emails/lifecycle_0631_a2_nova_price_only.eml",
@@ -1296,5 +1301,17 @@
       "payment_terms"
     ],
     "notes": "CONTAMINATION TEST with two other quotes already in the thread. Redwood's three rows only. Redwood gave COO and MOQ but not payment terms; Cobalt's Net 30 and Vantage's Net 45 are both visible above and must not be used to fill that gap."
+  },
+  {
+    "email_file": "data/sample_emails/14_buyer_rfq_relative_due.eml",
+    "expected_classification": "rfq_sent",
+    "expected_price_breaks": false,
+    "expected_production_lead_time": false,
+    "expected_long_lead_time_parts": false,
+    "expected_payment_terms": false,
+    "expected_missing_fields": [],
+    "expected_response_due_date": "2026-06-12",
+    "notes": "Buyer RFQ sent Monday 2026-06-08 asking for quotes 'by this Friday', so the response due date resolves to 2026-06-12 against the Sent date. The July 31 delivery date is a distractor: it is when parts are needed, not when the quote is due. Drives the issue #4 follow-up clock.",
+    "expected_action": "none"
   }
 ]

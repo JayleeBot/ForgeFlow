@@ -49,6 +49,7 @@ class RFQRequirements:
     our_part_number: str | None = None
     manufacturer: str | None = None
     mfg_part_number: str | None = None
+    response_due_date: str | None = None
 
 
 @dataclass(slots=True)
@@ -134,9 +135,17 @@ _RFQ_REQUIREMENTS_SCHEMA = {
                 "manufacturer number is our_part_number, and this stays null."
             ),
         },
+        "response_due_date": {
+            "type": ["string", "null"],
+            "description": (
+                "The date the buyer asks suppliers to respond by, as YYYY-MM-DD. Resolve "
+                "relative dates ('by Friday') against the RFQ email's Sent date. Null when the "
+                "buyer sets no response date — never infer one from a delivery date."
+            ),
+        },
     },
     "required": ["quantities_requested", "required_fields", "requested_tiers",
-                 "our_part_number", "manufacturer", "mfg_part_number"],
+                 "our_part_number", "manufacturer", "mfg_part_number", "response_due_date"],
 }
 
 _SUPPLIER_QUOTE_SCHEMA = {
@@ -340,6 +349,7 @@ def _format_thread(messages: list[EmailMessage]) -> str:
                 f"Subject: {message.subject}",
                 f"From: {message.sender}",
                 f"To: {message.recipients}",
+                f"Sent: {message.sent_at.isoformat()}",
                 "Body:",
                 message.body_text or "",
                 f"</{tag}>",
@@ -365,6 +375,7 @@ def _build_rfq_requirements(data: dict | None) -> RFQRequirements | None:
         our_part_number=data.get("our_part_number"),
         manufacturer=data.get("manufacturer"),
         mfg_part_number=data.get("mfg_part_number"),
+        response_due_date=data.get("response_due_date"),
     )
 
 

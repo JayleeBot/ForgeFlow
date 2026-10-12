@@ -201,6 +201,17 @@ def _price(value) -> Decimal | None:
         return None
 
 
+def grade_response_due_date(result: dict, case: dict) -> Grade:
+    """The RFQ's respond-by date, which starts the supplier follow-up clock (issue #4)."""
+    if "expected_response_due_date" not in case:
+        return Grade("response_due_date", True, "skipped (no expected_response_due_date)")
+    expected = case["expected_response_due_date"]
+    got = (result.get("rfq_requirements") or {}).get("response_due_date")
+    passed = got == expected
+    return Grade("response_due_date", passed,
+                 "ok" if passed else f"got {got!r}, expected {expected!r}")
+
+
 def grade_price_break_values(result: dict, case: dict) -> Grade:
     """Exact per-row check of what was actually quoted.
 
@@ -283,6 +294,7 @@ GRADERS = [
     grade_missing_fields,
     grade_service_tiers,
     grade_mfg,
+    grade_response_due_date,
     grade_price_break_values,
     grade_action,
     grade_draft_asks_expected,

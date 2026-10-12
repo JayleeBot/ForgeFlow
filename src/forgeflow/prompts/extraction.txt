@@ -84,6 +84,11 @@ the specific catalog part the supplier must quote.
   our_part_number and mfg_part_number is null. A subject line like
   "RFQ - Part XXX-1001 (MFR-AAA-2024)" names both: XXX-1001 is ours, MFR-AAA-2024 is the
   manufacturer's. Null for custom or made-to-print parts, which have no MPN.
+
+response_due_date: the date the buyer asks suppliers to respond by, as YYYY-MM-DD
+(from "Please respond by", "quote due", "deadline for quotes"). Resolve a relative date
+such as "by Friday" against the Sent date of the buyer's RFQ email. Null when the buyer
+sets no response date. A target delivery date is not a response date — never use one.
   </rfq_requirements>
 
   <supplier_quote>

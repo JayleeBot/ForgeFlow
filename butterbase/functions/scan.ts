@@ -135,6 +135,36 @@ async function readTable(db: any, reference: string): Promise<string> {
   return JSON.stringify(shaped, null, 2);
 }
 
+// tier is NOT NULL and part of the dedup index. Postgres treats NULLs as
+// distinct, so a quote with no tier split needs a sentinel or every re-run
+// inserts the same break again.
+const TIER_NONE = "-";
+
+// Only a comma with exactly three digits behind it is a thousands separator.
+// Stripping every comma turns the European "3,00" into 300 -- a hundredfold
+// price error on a figure a buyer is about to compare suppliers on.
+function priceToNumber(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const m = value.replace(/,(?=\d{3}(\D|$))/g, "").match(/-?\d+(\.\d+)?/);
+  return m ? Number(m[0]) : null;
+}
+
+// A buyer choosing between "24 weeks" and "25 business days from PO" needs one
+// scale, so both become calendar days, business days at the usual 7/5. A value
+// that names no unit stays null rather than being guessed at; `extracted` keeps
+// the supplier's wording either way.
+function leadTimeToDays(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const m = value.match(/(\d+(?:\.\d+)?)\s*(weeks?|business days?|working days?|days?)/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit = m[2].toLowerCase();
+  if (unit.startsWith("week")) return Math.round(n * 7);
+  if (unit.startsWith("day")) return Math.round(n);
+  return Math.round((n * 7) / 5);
+}
+
 async function recordExtraction(db: any, thread: Msg, input: any): Promise<string> {
   const supplier = input.supplier_name || "unknown supplier";
   const classification = input.classification || "unknown";
@@ -156,24 +186,50 @@ async function recordExtraction(db: any, thread: Msg, input: any): Promise<strin
   );
 
   if (classification === "supplier_quote" || classification === "supplier_reminder") {
+    const quoteId = `${thread.thread_id}|${thread.sender.toLowerCase()}`;
+    const quote = extraction.supplier_quote ?? {};
+    // missing_fields has its own column because readTable selects it: leaving it
+    // null gave the coordinator a blank answer to "what is still outstanding".
     await db.query(
       `insert into supplier_quotes (id, rfq_id, thread_id, supplier_email, supplier_name,
-         status, extracted, latest_message_id, updated_at)
-       values ($1, $2, $2, $3, $4, $5, $6::jsonb, $7, now())
+         status, extracted, missing_fields, latest_message_id, updated_at)
+       values ($1, $2, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, now())
        on conflict (rfq_id, supplier_email) do update set
          supplier_name = excluded.supplier_name, status = excluded.status,
-         extracted = excluded.extracted, latest_message_id = excluded.latest_message_id,
+         extracted = excluded.extracted, missing_fields = excluded.missing_fields,
+         latest_message_id = excluded.latest_message_id,
          updated_at = now()`,
       [
-        `${thread.thread_id}|${thread.sender.toLowerCase()}`,
+        quoteId,
         thread.thread_id,
         thread.sender,
         input.supplier_name ?? null,
         classification,
         JSON.stringify(extraction),
+        quote.missing_fields ? JSON.stringify(quote.missing_fields) : null,
         thread.message_id,
       ],
     );
+
+    // Replaced rather than upserted: the agent sends this supplier's complete
+    // picture every round, so a break it no longer reports should not linger.
+    await db.query("delete from quote_price_breaks where quote_id = $1", [quoteId]);
+    for (const b of Array.isArray(quote.price_breaks) ? quote.price_breaks : []) {
+      const price = priceToNumber(b?.unit_price);
+      const quantity = b?.quantity == null ? NaN : Number(b.quantity);
+      // Both columns are NOT NULL, and Number(null) is 0 rather than NaN -- a
+      // supplier who priced a part without naming a quantity would otherwise
+      // land as "0 pcs", which sorts to the top of the comparison table and
+      // reads as a real break. Skipped rows stay readable in `extracted`.
+      if (price === null || !Number.isInteger(quantity) || quantity <= 0) continue;
+      await db.query(
+        `insert into quote_price_breaks (quote_id, tier, quantity, unit_price, lead_time_days)
+         values ($1, $2, $3, $4, $5)
+         on conflict (quote_id, tier, quantity) do update set
+           unit_price = excluded.unit_price, lead_time_days = excluded.lead_time_days`,
+        [quoteId, b?.service_tier || TIER_NONE, quantity, price, leadTimeToDays(b?.lead_time)],
+      );
+    }
   }
   return `Recorded ${supplier} into the comparison table.`;
 }

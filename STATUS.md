@@ -2,76 +2,62 @@
 
 > Reference document for Claude (quick project orientation) and for the user (pending work).
 > Update after major changes.
-> Last updated: 2026-06-05
+> Last updated: 2026-10-11
 
 ---
 
 ## What It Does
 
-ForgeFlow is a local-first procurement email assistant. When a supplier replies to an RFQ,
-the agent automatically:
+ForgeFlow is a procurement email assistant. The buyer CCs it on outbound RFQs; when a
+supplier replies, the agent:
 1. Parses the email (price breaks, lead time, payment terms, NRE, COO, etc.)
-2. Determines whether the quote is complete
-3. Drafts follow-up emails (chase missing fields, or flag buyer for a decision)
+2. Determines whether the quote is complete against the buyer's RFQ requirements
+3. Drafts (or, with autosend on, sends) a follow-up for only the missing fields, or flags
+   the buyer when the supplier asked a question only the buyer can answer
 
 ---
 
 ## Code Map
 
 ```
-src/forgeflow/
-├── extractor.py   # Regex extraction — classifies and parses email into ExtractedCase
-├── agent.py       # LLM extraction — same contract as extractor, uses Claude API
-├── workflow.py    # Business logic — decide_next_action() + build_draft()
-├── engine.py      # Orchestration — sync() ingests emails, send() dispatches drafts
-├── store.py       # SQLite persistence
-├── config.py      # Env-var config (FORGEFLOW_AGENT_EMAIL, FORGEFLOW_FOLLOWUP_RETRY_DAYS)
-├── models.py      # Data models (QuoteCase, EmailMessage, Draft)
-└── cli.py         # CLI entry point
+butterbase/                  # Production path (forgeflow.butterbase.dev)
+├── functions/scan.ts        # Cron every 10 min: one unseen Outlook thread per run →
+│                            #   managed-agent session → comparison table + reply
+├── functions/rfqs.ts        # Dashboard read function
+├── dashboard/               # React buyer dashboard (deploy-time snapshot; demo mode)
+├── schema.json              # rfqs, supplier_quotes, quote_price_breaks, interactions, agent_seen
+└── deploy*.py, set-secrets.py, push-rotated-token.py
+
+src/forgeflow/               # Python: agent definition, evals, local CLI
+├── managed_agent.py         # Coordinator + subagent managed-agent deployment, tool schemas
+├── prompts/                 # coordinator.txt, extraction.txt, response.txt, reply_agent.txt
+├── agent.py                 # Local agent path (schema, extraction, action state)
+├── processor.py             # Local ingest → process → respond loop
+├── evals.py                 # Native eval harness over data/eval_cases/eval_cases.json
+├── graph.py / auth.py       # Microsoft Graph mailbox + device-code login
+├── store.py                 # Local SQLite (data/forgeflow.db)
+├── server.py / simulator.py # Local dashboard + scenario simulator
+└── cli.py                   # CLI entry point
 ```
+
+The old regex pipeline (`extractor.py`, `workflow.py`, `engine.py`) has been removed.
 
 ---
 
-## Core Logic: Three-State Model
+## Core Logic
 
-Each supplier email is extracted and then routed by `workflow.py`:
+The coordinator classifies the latest email in a thread:
 
-```
-Email arrives
-    ↓
-extractor / agent extracts fields → ExtractedCase
-    ↓
-decide_next_action()
-    ├── classification = "ignore"              → no action         (status: closed)
-    ├── classification = "supplier_reminder"   → draft acknowledgement (status: needs_review)
-    ├── missing_fields = ["buyer_input_required"]
-    │   └── supplier asked buyer a question    → FLAG FOR BUYER    (status: pending_buyer_input)
-    ├── missing_fields not empty               → chase supplier    (status: quote_incomplete)
-    └── missing_fields empty                   → quote complete    (status: quote_received)
-```
+- `rfq_sent` — buyer's outbound RFQ → records the RFQ's collection form (`rfq_requirements`)
+- `supplier_quote` / `supplier_reminder` → extracts the quote, records it, then either
+  chases the supplier for missing required fields or flags the buyer (`blocking_question`)
+- `ignore` — everything else
 
-**Key distinction:**
-- `classification` = what type of email this is (from extractor)
-- `status` = what to do next (from workflow)
+Sending is gated by `FORGEFLOW_MANAGED_AGENT_AUTOSEND`; with it off, the reply text is stored
+in `interactions.draft_reply` and nothing is sent.
 
----
-
-## Implemented Features
-
-| Feature | Status |
-|---------|--------|
-| Regex extraction (extractor.py) | Done |
-| LLM extraction (agent.py, Claude API) | Done |
-| Three-state workflow (workflow.py) | Done |
-| Supplier blocking question detection → FLAG FOR BUYER | Done |
-| 3-day followup retry throttle | Done |
-| Buyer reply detection (exclusion logic) | Done |
-| Agent email footer (include agent on all replies) | Done |
-| Edge case: quantity-adjusted quotes treated as complete | Done |
-| Edge case: supplier blocking question → buyer_input_required | Done |
-| Thread-aware extraction (classify on latest, extract from full thread) | Done |
-| Python eval — 16 test cases (regex path) | Done — 16/16 passing |
-| Promptfoo eval — 16 test cases (LLM path) | Done — 16/16 passing |
+**Known gap:** the pipeline only reacts to new inbound mail. A supplier who never replies
+triggers nothing — see issue #4 below.
 
 ---
 
@@ -79,36 +65,37 @@ decide_next_action()
 
 ### High Priority
 
-- [ ] **Commit all changes** — 15 modified files + STATUS.md (untracked):
-  - src/forgeflow/{extractor,agent,workflow,engine,store,config,models,cli}.py
-  - data/eval_cases/eval_cases.json
-  - promptfoo/{provider,tests}.py + src/forgeflow/evaluate.py
-  - README.md, docs/agent_capabilities.md, STATUS.md
+- [ ] **Issue #4 — follow up suppliers who have not replied by the RFQ due date.**
+  Decided 2026-10-11 (no code yet):
+  - Extract `response_due_date` from the buyer's RFQ into `rfq_requirements`; store on `rfqs`.
+  - Trigger: 2 business days before the due date; on the due date if the RFQ went out with
+    less than 2 business days left; no due date → 3 business days after the RFQ was sent.
+  - Skip when the supplier has already replied (match on email domain).
+  - Deterministic check in a new daily Butterbase function, fixed template (no LLM), a
+    `rfq_followups` table so each supplier is chased once.
+  - Delivery follows the existing autosend switch (send when on, store draft when off).
+  - Usually one supplier per RFQ email.
+  - Issue #5 (deliver drafts to the Outlook Drafts folder) is not part of this round.
 
-### Medium Priority
+### ForgeFlow Improvement
 
-- [ ] **Set FORGEFLOW_AGENT_EMAIL env var** — without it, the footer email address is blank.
-  Add to `.env`: `FORGEFLOW_AGENT_EMAIL=forgeflow-agent@electester.com`
+- [ ] **Buyer attribution for team-shared CC** — one CC address serves a whole team; each RFQ record
+  stores which buyer owns it (from the RFQ email's From address). Scope: `buyer_email` field on the
+  RFQ record + dashboard column + filter by buyer. Explicitly out of scope for now: login/accounts,
+  per-buyer visibility isolation, roles, seat billing enforcement. (Discussed 2026-07-19 during YC
+  application prep; supports the "land one buyer → expand to team" story.)
+- [ ] Dashboard Stage B — see `docs/dashboard_stage_b.md`.
 
 ### Low Priority (Future)
 
 - [ ] Add more edge case eval scenarios: wrong part number, currency mismatch, partial BOM quotes
 - [ ] Decide whether `quote_validity` should be a tracked extraction field
-- [ ] Do a full visual review of Promptfoo results from the buyer's perspective
 
 ---
 
 ## How to Run Evals
 
 ```bash
-# Python eval (fast, regex path)
 cd /Users/jaylee/Desktop/ForgeFlow
 PYTHONPATH=src python3 -m forgeflow.cli eval
-
-# Promptfoo eval (slower, LLM path, generates web UI)
-PYTHONPATH=src npx promptfoo@latest eval --no-cache
-
-# View last Promptfoo results in browser
-npx promptfoo@latest view
-# Then open http://localhost:15500
 ```
